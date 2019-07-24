@@ -1,0 +1,16 @@
+#PBS -A UQ-SCI-Earth
+#PBS -l select=1:ncpus=1:mem=64GB
+#PBS -l walltime=02:00:00
+
+# script
+cat /RDS/Q0786/11_twitter_prep_hpc.R | tr -d '\r' > $TMPDIR/11_twitter_prep_hpc.R
+
+cd $TMPDIR
+
+module purge
+module load geos
+module load gdal
+module load proj
+module load R
+
+R CMD BATCH --verbose --no-save --no-restore 11_twitter_prep_hpc.R

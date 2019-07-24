@@ -1,0 +1,903 @@
+---
+title: "Twitter - data preparation 04"
+author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+# setwd('R:/TWITTER-I0479')
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, magrittr, naniar, here, janitor, scales,
+       anytime, lubridate, lutz, 
+       skimr, sjmisc, kableExtra, 
+       sf, tmap, tmaptools)
+
+tmap_mode("view") # makes map interactive
+
+isUnique <- function(vector){
+  return(!any(duplicated(vector)))
+}
+
+# State data
+STE <- st_transform(st_read("./data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST.shp"), 4326)
+STE$AREASQKM16 <- NULL
+# st_is_valid(STE)
+
+# buffer 0.5 degrees prepared in ArcGIS
+STE_b_05 <- st_transform(st_read("./data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST_B05.shp"), 4326)
+# st_is_valid(STE_b_05)
+
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+```{r data_update, eval=FALSE}
+# Connection
+
+# That chunk should not be normally evaluated and is used only occasionally to update data!
+
+p_load(bigrquery)
+
+project <- "goopla-1509504704864"
+# project <- "twitter-stream-205107"
+
+sql <- "SELECT * FROM `twitter-stream-205107.twitter_stream.streaming`"
+
+tb <- bq_project_query(project, sql)
+
+tweets_raw <- bq_table_download(tb, bigint = "integer64")
+
+saveRDS(tweets_raw, file = "./data/Twitter/raw/tweets_raw.rds")
+
+# tweets_raw_10k <- tweets_raw %>% 
+#   sample_n(10000)
+# saveRDS(tweets_raw_10k, file = "./data/raw/tweets_raw_10k.rds")
+# 
+# tweets_raw_100k <- tweets_raw %>% 
+#   sample_n(100000)
+# saveRDS(tweets_raw_100k, file = "./data/raw/tweets_raw_100k.rds")
+# 
+# tweets_raw_1m <- tweets_raw %>% 
+#   sample_n(1000000)
+# saveRDS(tweets_raw_1m, file = "./data/raw/tweets_raw_1m.rds")
+
+# saving to a bucket 
+# bq_table_save(tb, "gs://twitter_stream-streaming/2018-12-04_*.csv")
+
+# download chunks
+# gsutil ls gs://twitter_stream-streaming/
+# gsutil ls -l gs://twitter_stream-streaming/
+# gsutil cp gs://twitter_stream-streaming/2018-12-04_*.csv R:\TWITTER-I0479\data\raw\2018-12-04\
+# gsutil rm gs://twitter_stream-streaming/2018-12-04_*.csv
+
+rm(project, sql, tb)
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+```{r, eval=FALSE}
+# Preprocessing done on HPC!
+# R:\POP247-Q0786\11_twitter_prep_hpc.R
+```
+
+<!-- ------------------------------------------------------------ --> 
+# Data prep  
+
+```{r}
+tweets_clean_2019_03_18 <- readRDS("./data/Twitter/clean/tweets_proc_2019_07_22.rds") %>% 
+  select(-place_url, -user_geo_enabled, -user_verified, -lang) %>% 
+  filter(!is.na(created_at))
+
+# sjmisc::frq(tweets_clean_2019_03_18, source, sort.frq = "desc")
+# sjmisc::descr(tweets_clean_2019_03_18, lat)
+
+```
+
+Preprocessed dataset has `r comma(nrow(tweets_proc_2019_07_22))` rows and `r comma(ncol(tweets_proc_2019_07_22))` columns
+
+## IDs
+
+### Fixing user id
+
+Problem with `user_id_str` character in scientific notation (like `1.00031e+18`).
+
+```{r, include=FALSE}
+# length(unique(tweets_proc_2019_07_22$user_id_str))
+# length(unique(tweets_proc_2019_07_22$user_screen_name))
+# 
+# id <- tweets_proc_2019_07_22 %>%
+#   group_by(user_id_str) %>%
+#   summarise(count = n()) %>%
+#   arrange(desc(count))
+# 
+# name <- tweets_proc_2019_07_22 %>%
+#   group_by(user_screen_name) %>%
+#   summarise(count = n()) %>%
+#   arrange(desc(count))
+
+both <- tweets_clean_2019_03_18 %>%
+  group_by(user_id_str, user_screen_name) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+# dupli1 <- both %>%
+#   group_by(user_screen_name) %>%
+#   summarise(count = n()) %>%
+#   filter(count > 1) %>%
+#   arrange(desc(count))
+# 
+# dupli2 <- both %>%
+#   group_by(user_id_str) %>%
+#   summarise(count = n()) %>%
+#   filter(count > 1) %>%
+#   arrange(desc(count))
+# 
+# rm(dupli1, dupli2)
+```
+
+For example, same screen name & different ID:
+
+```{r}
+both %>% 
+  filter(user_screen_name == "ausbiebersquad")
+```
+
+Or same ID & different screen name:
+
+```{r}
+both %>% 
+  filter(user_id_str == "3281052492")
+
+rm(both)
+```
+
+`user_id_str` & `user_screen_name` were combined in new variable `UID` that might be better for some applications (?).
+
+### Fixing tweet id 
+
+Similarly, because of scientific notation there is a problem with `id_str` character formatted like `1.00031e+18`.
+
+```{r}
+# isUnique(tweets_proc_2019_07_22$id_str)
+# 
+# length(tweets_proc_2019_07_22$id_str)
+# length(unique(tweets_proc_2019_07_22$id_str))
+
+tweets_clean_2019_03_18 %>% 
+  select(id_str, created_at, place_full_name) %>% 
+  filter(id_str == "1.00028e+18")
+
+```
+
+**Currently - no steps taken to resolve that.**
+
+
+## Geography
+
+### `geo` variable
+
+Small amount of tweets have extra coordinates represented by `geo` variable. It has a format of `{"type":"Point","coordinates":[-35.23558731,138.2079786]}` and often coordinates are the same or very similar. Coordinates were extracted from that to `geo_lat` & `geo_lon`.
+
+```{r}
+geo1_sp <- readRDS(file = "./data/Twitter/clean/geo1_sp.rds")
+```
+
+There are `r sum(geo1_sp$freq)` tweets in `r nrow(geo1_sp)` locations having (more?) precise coordinates. 
+
+```{r}
+tm_shape(geo1_sp) + tm_bubbles(size = "freq", col = "red")
+```
+
+Quite few of them turned out to be good candidates for deletions: 
+
+```{r include=FALSE}
+temp2 <- tweets_clean_2019_03_18 %>% 
+  group_by(user_description) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq)) %>% 
+  ungroup()
+
+tweets_clean_2019_03_18 %<>% 
+  filter(!grepl("semi automated bot", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("unofficial bot", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("Traffic alerts", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("LIVE Traffic", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("Follow this account for geo-targeted", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("Weather updates, forecast", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("Twitter trends", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("Hobart GPO Clock Tower", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("This is the #jobs feed", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("NSW RFS Incident feed", user_description, ignore.case = TRUE)) %>% 
+  filter(!grepl("West Coast Sentinel", user_description, ignore.case = TRUE))
+
+rm(tweets_proc_2019_07_22)
+gc()
+
+temp1 <- tweets_clean_2019_03_18 %>% 
+  group_by(user_description) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq)) %>% 
+  ungroup()
+
+temp3 <- anti_join(temp2, temp1)
+```
+
+`r comma(sum(temp3$freq))` tweets of `r comma(nrow(temp3))` bot-like users were excluded.
+
+```{r}
+temp3 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+```{r include=FALSE}
+rm(temp1, temp2, temp3, geo1_sp)
+gc()
+```
+
+Remaining tweets with more precise coordinates were used to replace `lat` & `lon` values.
+
+```{r, eval=TRUE}
+tweets_clean_2019_03_18 %<>% 
+  mutate(orig_lat = lat) %>% 
+  mutate(orig_lon = lon) %>% 
+  mutate(lat = ifelse(are_na(geo_lat), lat, geo_lat)) %>% 
+  mutate(lon = ifelse(are_na(geo_lat), lon, geo_lon)) 
+```
+
+### Twitter coordinates
+
+```{r}
+geo2_sp <- readRDS(file = "./data/Twitter/clean/geo2_sp.rds")
+```
+
+There are `r sum(geo2_sp$freq)` tweets in `r nrow(geo2_sp)` distinct locations having precise coordinates (*including update above*). 
+
+Here a sample of locations with at least `100` tweets:
+
+```{r}
+subset(geo2_sp, freq > 99) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red", alpha = 0.25, border.lwd = NA)
+```
+
+They clearly reflect `bbox` used for search and still include tweets located, for instance, in Indonesia and on the ocean (sic!). 
+
+```{r include=FALSE}
+rm(geo2_sp)
+gc()
+```
+
+
+#### Tweets inside Oz
+
+```{r}
+geo2_inside_sp <- readRDS(file = "./data/Twitter/clean/geo2_inside_sp.rds")
+
+tweets_geo2_inside <- left_join(geo2_inside_sp@data, tweets_clean_2019_03_18) %>% 
+  ungroup() %>%
+  select(-freq) %>% 
+  filter(!is.na(created_at))
+
+# tm_shape(tweets_geo2_inside) + tm_dots(col = "red")
+
+# ggplot(tweets_geo2_inside) + 
+#   geom_histogram(aes(created_at)) + 
+#   scale_x_datetime()
+
+```
+
+From tweets with coordinates mentioned above, there are `r comma(sum(geo2_inside_sp$freq))` tweets in `r comma(nrow(geo2_inside_sp))` distinct locations having coordinates and overlaying shape of Austrlia with 0.5 degree buffer around it (*to capture islands, reef, imprecise coords*). 
+
+Note: map too large for interactive.
+
+```{r include=FALSE}
+rm(geo2_inside_sp)
+gc()
+```
+
+#### Tweets outside  Oz
+
+```{r}
+geo2_outside_sp <- readRDS(file = "./data/Twitter/clean/geo2_outside_sp.rds")
+
+tweets_geo2_outside <- left_join(geo2_outside_sp@data, tweets_clean_2019_03_18) %>% 
+  filter(!is.na(created_at))
+
+tweets_clean_2019_03_18 <- anti_join(tweets_clean_2019_03_18, select(geo2_outside_sp@data, lon, lat)) 
+
+geo2_outside_places <- geo2_outside %>% 
+  select(place_full_name) %>% 
+  group_by(place_full_name) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq))
+```
+
+From tweets with coordinates mentioned above, there are `r comma(sum(geo2_outside_sp$freq))` tweets in `r comma(nrow(tweets_geo2_outside))` distinct locations having coordinates and **not** overlaying shape of Austrlia with 0.5 degree buffer around it. 
+
+
+```{r}
+tm_shape(geo2_outside_sp) + 
+  tm_bubbles(size = "freq", col = "red")
+```
+
+Seems mostly fine with few exceptions:
+
+```{r}
+geo2_outside_places %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+These tweets have now been excluded. Some of the them could be rescued with a bit of cleaning? It seems that some of the place names could be used to bring them back? 
+
+```{r include=FALSE}
+rm(geo2_outside_sp, geo2_outside_places)
+gc()
+```
+
+
+### Geocoding `place_full_name`
+
+```{r}
+place_full_name <- tweets_clean_2019_03_18 %>% 
+  filter(are_na(lat)) %>% 
+  group_by(place_full_name) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq)) 
+```
+
+Large chunk of tweets - `r comma(sum(place_full_name$freq))` to be specific, have no coordinates but are labeled with `place_full_name`. Here are top 30 most frequent, with corresponding number of tweets missing coordinates from that places: 
+
+```{r}
+place_full_name %>% 
+  slice(1:30) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+Unfortunately there are `r comma(nrow(place_full_name))` distinct locations mentioned with various quality and geographical precision. Fortunately, it's highly skewd distribution with potential for fast gains when geocoding from the top. 
+
+```{r}
+descr(place_full_name$freq) 
+```
+
+That unfortunatly can also create bias towards more frequent places!
+
+[OpenCage](https://opencagedata.com) (via package `opencage`) was used to get coordinates for these places. Locations with `place_place_type == "country"` (for instance "Australia", "Indonesia") and `place_place_type == "admin"` (which captured states, for instance "Victoria, Australia" or "Nusa Tenggara Oriental, Indonesia") were excluded from geocoding.If multiple places were found, then the first (probably best?) was kept.  
+
+```{r eval=FALSE, include=FALSE}
+frq(tweets_clean_2019_03_18$place_place_type) 
+
+tweets_clean_2019_03_18 %>% 
+  filter(place_place_type == "country") %>% 
+  frq(place_full_name, sort.frq = "desc")
+
+tweets_clean_2019_03_18 %>% 
+  filter(place_place_type == "admin") %>% 
+  frq(place_full_name, sort.frq = "desc")
+```
+
+Also, places with the same Twitter name can be categorized in different ways resulting in duplicates:
+
+```{r}
+tweets_clean_2019_03_18 %>% 
+  filter(is.na(lat)) %>% 
+  filter(place_place_type != "country") %>% 
+  filter(place_place_type != "admin") %>% 
+  group_by(place_full_name, place_place_type) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq)) %>% 
+  ungroup() %>% 
+  get_dupes(place_full_name)
+```
+
+These duplicates were ignored for geocoding. 
+
+
+```{r, eval=FALSE}
+place_full_name <- tweets_clean_2019_03_18 %>% 
+  filter(is.na(lat)) %>% 
+  filter(place_place_type != "country") %>% 
+  filter(place_place_type != "admin") %>% 
+  group_by(place_full_name) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq)) %>% 
+  ungroup()
+
+p_load(opencage)
+key <- "faf26cdb6ba14a7d8e62e908e880ebd0"
+
+# temp <- opencage_forward("zero95", key, countrycode = "AU")
+# temp$results 
+# 
+# temp$results$confidence[1]
+# temp$results$geometry.lat[1]
+# temp$results$geometry.lng[1]
+# temp$results$formatted[1]
+
+# solution to keep first (best?) record
+# might be worth to keep all of them? with rbind or sth similar?
+
+place_full_name$confidence <- numeric(length = nrow(place_full_name))
+place_full_name$formatted <- ""
+place_full_name$ext_lat <- numeric(length = nrow(place_full_name))
+place_full_name$ext_lon <- numeric(length = nrow(place_full_name))
+
+place_full_name <- readRDS(file = "./data/Twitter/clean/place_full_name.rds")
+
+slice(place_full_name, 17400:17401)
+
+for (i in 17401:19900) {
+  temp <- opencage_forward(place_full_name$place_full_name[i], key, countrycode = "AU")
+  
+  if (is.null(temp$results)) {
+    
+    place_full_name$confidence[i] <- NA
+    place_full_name$formatted[i] <- ""
+    place_full_name$ext_lat[i] <- NA
+    place_full_name$ext_lon[i] <- NA
+    
+  } else {
+    
+    place_full_name$confidence[i] <- temp$results$confidence[1]
+    place_full_name$formatted[i] <- temp$results$formatted[1]
+    place_full_name$ext_lat[i] <- temp$results$geometry.lat[1]
+    place_full_name$ext_lon[i] <- temp$results$geometry.lng[1]
+    
+  }
+  
+  Sys.sleep(1)
+}
+
+saveRDS(place_full_name, file = "./data/Twitter/clean/place_full_name.rds")
+rm(key)
+
+```
+
+Here are first 1000 most frequent locations that are currently geocoded. 
+
+```{r}
+place_full_name <- readRDS(file = "./data/Twitter/clean/place_full_name.rds")
+
+place_full_name_sf <- place_full_name %>% 
+  drop_na(ext_lat) %>% 
+  filter(ext_lat != 0) %>% 
+  st_as_sf(coords = c("ext_lon", "ext_lat"), crs = 4326)
+
+# table(st_is_valid(place_full_name_sf))
+
+place_full_name_sf %>% 
+  slice(1:1000) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red")
+
+```
+
+There were some issues with quality of geocoding. For instance "Sydney (Kingsford Smith) Airport (SYD)" was geocoded to "29 SMITHS AV, REDCLIFFE WA 6104, Australia" (for some mysterious reason?)
+
+```{r, eval=FALSE}
+place_full_name_sf %>% 
+  filter(place_full_name == "Sydney (Kingsford Smith) Airport (SYD)") %>% 
+  tm_shape() + tm_dots(col = "red")
+```
+
+Working further with this data would require some cleaning to be done here.
+
+## Fixing timezones
+
+![Time zones.](./docs/tzmap-australia-nz.png)
+
+Source: https://www.timeanddate.com/time/australia/time-zones-background.html
+
+Using package `lutz` from https://github.com/ateucher/lutz time zones were obtained for every location for locations with Twitter (precise) coordinates and geocoded place names. `created_at` variable is still in UTC time though since there is no no easy vectorised way to update timestamp.
+
+### geo data
+
+```{r, include=FALSE}
+# format(anytime("2018-08-28 07:32:04", tz = "UTC", asUTC = TRUE), tz="Australia/Brisbane", usetz = TRUE)
+# format(anytime("2018-08-28 07:32:04", tz = "UTC", asUTC = TRUE), tz="Australia/Perth", usetz = TRUE)
+
+# with_tz(anytime("2018-08-28 07:32:04", tz = "UTC", asUTC = TRUE), tzone = "Australia/Brisbane")
+# with_tz(anytime("2018-08-28 07:32:04", tz = "UTC", asUTC = TRUE), tzone = "Australia/Perth")
+
+tweets_geo2_inside_tz <- tweets_geo2_inside %>% 
+  filter(!is.na(lat)) %>% 
+  group_by(lat, lon) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  select(-count) %>% 
+  ungroup()
+```
+
+`r comma(nrow(tweets_geo2_inside_tz))` locations (inside Oz) had their time zone defined. 
+
+```{r}
+tweets_geo2_inside_tz$tz <- tz_lookup_coords(tweets_geo2_inside_tz$lat, tweets_geo2_inside_tz$lon, method = "accurate")
+# sjmisc::frq(tweets_geo2_inside_tz, tz, sort.frq = "desc", show.na = TRUE) 
+
+tweets_geo2_inside <- left_join(tweets_geo2_inside, tweets_geo2_inside_tz) 
+rm(tweets_geo2_inside_tz)
+sjmisc::frq(tweets_geo2_inside, tz, sort.frq = "desc", show.na = TRUE) 
+
+# # convert time zone based on lat lon
+# tweets_geo2_inside$created_at_tz <- tweets_geo2_inside$created_at
+# 
+# for (i in 1:nrow(tweets_geo2_inside)) {
+#   tweets_geo2_inside$created_at_tz[i] <- anytime(as.character(tweets_geo2_inside$created_at[i]),
+#                                             asUTC = FALSE, tz = as.character(tweets_geo2_inside$tz[i]))
+#   tweets_geo2_inside$created_at_tz[i] <- force_tz(tweets_geo2_inside$created_at_tz[i],
+#                                           tzone = as.character(tweets_geo2_inside$tz[i]))
+# }
+# 
+# table(tz(tweets_geo2_inside2_inside$created_at))
+# table(tweets_geo2_inside2_inside$tz)
+# table(tz(tweets_geo2_inside2_inside$created_at_tz))
+
+# tweets_geo2_inside2_inside$temp <- tweets_geo2_inside2_inside$created_at_tz - tweets_geo2_inside2_inside$created_at
+# table(tweets_geo2_inside2_inside$temp)
+# tweets_geo2_inside2_inside$temp <- NULL
+
+# # extracting parts of date - some as numbers some as strings!
+# tweets_geo2_inside %<>% 
+#   mutate(created_at_hod = as.numeric(format(created_at_tz, "%H"))) %>% # hour
+#   mutate(created_at_hod_notz = as.numeric(format(created_at, "%H"))) 
+
+# # fake timestamp - original time and the same date
+# tweets_geo2_inside$created_at_time_2 <- anytime(paste("2018-01-01", # same date for all tweets
+#                                               format(tweets_geo2_inside$created_at_tz, format="%T")) # original time of tweet
+# )
+
+# summary(tweets_geo2_inside$created_at_tz)
+# summary(tweets_geo2_inside$created_at_time_2)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+# Notice the difference of updated time zone for `r nrow(tweets_geo)` tweets with coords.
+
+# ggplot(tweets_geo2_inside, aes(created_at_hod_notz)) + 
+#   geom_bar() 
+# 
+# ggplot(tweets_geo2_inside, aes(created_at_hod)) + 
+#   geom_bar() 
+# 
+# tweets_geo %<>% 
+#   select(-created_at_hod_notz, -user_utc_offset, -user_time_zone)
+
+# tweets_geo %<>% 
+#   select(-user_utc_offset, -user_time_zone)
+```
+
+
+### place name data
+
+```{r, include=FALSE}
+tweets_place_tz <- place_full_name %>% 
+  filter(ext_lat != 0) %>% 
+  select(place_full_name, ext_lat, ext_lon)
+```
+
+`r nrow(tweets_place_tz)` geocoded locations (inside Oz) had their time zone updated. 
+
+```{r}
+tweets_place_tz$tz <- tz_lookup_coords(tweets_place_tz$ext_lat, tweets_place_tz$ext_lon, method = "accurate")
+# sjmisc::frq(tweets_place_tz, tz, sort.frq = "desc", show.na = TRUE) 
+
+tweets_place <- tweets_clean_2019_03_18 %>% 
+  filter(is.na(lat)) %>% 
+  filter(place_place_type != "country") %>% 
+  filter(place_place_type != "admin") %>% 
+  left_join(tweets_place_tz)
+
+rm(tweets_place_tz)
+# sjmisc::frq(tweets_place, tz, sort.frq = "desc", show.na = TRUE) 
+```
+
+
+```{r, eval=FALSE}
+#### `user_utc_offset` and `user_time_zone`
+
+sjmisc::frq(tweets_clean_2019_03_18, user_utc_offset, sort.frq = "desc", show.na = TRUE) 
+sjmisc::frq(tweets_clean_2019_03_18, user_time_zone, sort.frq = "desc", show.na = TRUE) 
+
+# Check if `user_utc_offset` and `user_time_zone` can be of any use here? 
+
+```
+
+## Finding bots
+
+Note: only `tweets_geo2_inside` was prepared at this stage
+
+### Using very frequent tweets
+
+```{r}
+temp1 <- tweets_geo2_inside %>% 
+  dplyr::arrange(UID, created_at) %>% 
+  dplyr::group_by(UID) %>%
+  dplyr::mutate(tdiff = created_at - dplyr::lag(created_at)) %>% 
+  dplyr::select(UID, user_id_str, created_at, tdiff, 
+                lat, lon, user_description, text) %>% 
+  ungroup() 
+
+temp2 <- temp1 %>% 
+  dplyr::filter(tdiff <= 1) %>% 
+  dplyr::group_by(UID) %>% 
+  dplyr::summarise(htime = n(), 
+                   first(user_id_str), first(user_description)) %>% 
+  dplyr::filter(htime >= 9) %>%
+  ungroup() %>% 
+  arrange(desc(htime))
+
+temp3 <- temp2 %>% 
+  left_join(tweets_geo2_inside) %>% 
+  arrange(desc(htime), UID, created_at) %>% 
+  select(htime, UID, user_id_str, created_at, user_description, text, everything()) 
+```
+
+
+'High frequency' tweets were found looking at the timestamp of consecutive tweets for each user. If difference of time between tweets was equal or less than a second and user created 9 or more such tweets, all tweets of this user were excluded.
+
+`r comma(nrow(temp3))` tweets of `r comma(nrow(temp2))` users were excluded using this method.
+
+```{r}
+temp2 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+```{r include=FALSE}
+tweets_geo2_inside %<>% 
+  anti_join(select(temp3, UID))
+
+rm(temp1, temp2, temp3)
+gc()
+```
+
+
+### Using tweets with unusual speed
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+temp1 <- tweets_geo2_inside %>% 
+  dplyr::arrange(UID, created_at) %>% 
+  dplyr::group_by(UID) %>%
+  dplyr::mutate(tdiff = created_at - dplyr::lag(created_at),
+                lat_lag = dplyr::lag(lat),
+                lon_lag = dplyr::lag(lon),
+                # latdiff = lat - dplyr::lag(lat),
+                # londiff = lon - dplyr::lag(lon),
+                days = max(as.Date(created_at)) - min(as.Date(created_at))) %>% 
+  dplyr::select(UID, user_id_str, created_at, tdiff, days, 
+                lat, lon, lat_lag, lon_lag, # latdiff, londiff,
+                user_description, text) %>% 
+  ungroup() 
+
+p_load(geosphere)
+
+temp1 %<>% 
+  mutate(dvsp = distVincentyEllipsoid(cbind(lon, lat), cbind(lon_lag, lat_lag)))
+
+# temp1 %<>% 
+#   rowwise() %>% 
+#   mutate(dvsp = distVincentyEllipsoid(c(lon, lat), c(lon_lag, lat_lag))) %>% 
+#   ungroup() 
+
+# temp1$dvsp <- NA
+# for (i in 1:nrow(temp1)) {
+#   if(!is.na(temp1$lon_lag[i])) { 
+#     temp1$dvsp[i] <- distVincentyEllipsoid(c(temp1$lon[i], temp1$lat[i]), 
+#                                            c(temp1$lon_lag[i], temp1$lat_lag[i]))
+#   }
+# }
+
+p_unload(geosphere)
+
+temp1$dvsp <- as.integer(temp1$dvsp)
+temp1$speed <- as.integer(temp1$dvsp / as.numeric(temp1$tdiff))
+
+temp2 <- temp1 %>% 
+  dplyr::filter(speed > 10000 & !is.na(speed)) %>% 
+  dplyr::group_by(UID) %>% 
+  dplyr::summarise(hspeed = n(), first(user_description)) %>% 
+  arrange(desc(hspeed)) %>% 
+  ungroup()
+
+temp3 <- temp2 %>% 
+  select(UID, hspeed) %>% 
+  left_join(tweets_geo2_inside) %>% 
+  arrange(desc(hspeed), UID, created_at) %>% 
+  dplyr::select(hspeed, UID, user_id_str, created_at, 
+                lat, lon, 
+                user_description, text) 
+```
+
+
+'High speed' tweets were found looking at the time difference and distance between consecutive tweets for each user (to derive speed of movement). If speed had unrealistic values (here testing `10,000` m/s), all tweets of this user were excluded.
+
+`r comma(nrow(temp3))` tweets of `r comma(nrow(temp2))` users were excluded using this method.
+
+```{r}
+temp2 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+```{r include=FALSE}
+tweets_geo2_inside %<>% 
+  anti_join(select(temp3, UID))
+
+rm(temp1, temp2, temp3)
+gc()
+```
+
+
+```{r, include=FALSE}
+tweets_clean_2019_03_18 %<>% 
+  select(id_str, user_id_str, user_screen_name, UID, 
+         created_at, 
+         lat, lon, geo_lat, geo_lon, orig_lat, orig_lon, 
+         starts_with("place"), 
+         everything(), source) %>% 
+  arrange(created_at, UID)
+
+tweets_geo2_inside %<>% 
+  select(id_str, user_id_str, user_screen_name, UID, 
+         created_at, tz, 
+         lat, lon, geo_lat, geo_lon, orig_lat, orig_lon, 
+         starts_with("place"), 
+         everything(), source) %>% 
+  select(-timestamp_ms) %>% 
+  arrange(created_at, UID)
+
+tweets_place %<>% 
+  select(id_str, user_id_str, user_screen_name, UID, 
+         created_at, 
+         lat, lon, geo_lat, geo_lon, ext_lat, ext_lon, orig_lat, orig_lon, 
+         starts_with("place"), 
+         everything(), source) %>% 
+  arrange(created_at, UID)
+
+saveRDS(tweets_geo2_inside, file = "./data/Twitter/clean/tweets_geo2_inside.rds")
+saveRDS(tweets_place, file = "./data/Twitter/clean/tweets_place.rds")
+saveRDS(tweets_clean_2019_03_18, file = "./data/Twitter/clean/tweets_clean_2019_03_18.rds")
+
+```
+
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+# Results
+
+```{r}
+# tweets_geo2_inside <- readRDS(file = "./data/Twitter/clean/tweets_geo2_inside.rds")
+# tweets_place <- readRDS(file = "./data/Twitter/clean/tweets_place.rds")
+# tweets_clean_2019_03_18 <- readRDS(file = "./data/Twitter/clean/tweets_clean_2019_03_18.rds")
+```
+
+## `tweets_clean_2019_03_18` 
+
+`tweets_clean_2019_03_18` dataset has `r nrow(tweets_clean_2019_03_18)` rows and `r ncol(tweets_clean_2019_03_18)` columns.
+
+### Structure
+
+```{r, results='asis'}
+skim(tweets_clean_2019_03_18) %>% 
+  skimr::kable()
+```
+
+### Missing data
+
+```{r}
+gg_miss_var(tweets_clean_2019_03_18, show_pct = TRUE)
+```
+
+### Time
+
+It's UTC for everybody!
+
+```{r}
+summary(tweets_clean_2019_03_18$created_at)
+```
+
+There is a gap?
+
+```{r}
+tweets_clean_2019_03_18 %>% 
+  # slice(1:10) %>% 
+  select(created_at) %>% 
+  mutate(date = as.Date(created_at)) %>% 
+  ggplot() +
+  geom_histogram(aes(date), binwidth = 1) +
+  scale_x_date(date_breaks = "1 month", date_minor_breaks = "1 week") + 
+  theme_minimal()
+```
+
+```{r eval=FALSE, include=FALSE}
+temp <- tweets_clean_2019_03_18 %>% 
+  # slice(1:10) %>%
+  select(created_at) %>% 
+  mutate(date = as.Date(created_at)) %>% 
+  group_by(date) %>% 
+  summarise(freq = n()) %>% 
+  arrange(date) %>% 
+  ungroup()
+
+```
+
+## `tweets_geo2_inside` 
+
+`tweets_geo2_inside` dataset has `r nrow(tweets_geo2_inside)` rows and `r ncol(tweets_geo2_inside)` columns.
+
+### Structure
+
+```{r, results='asis'}
+skim(tweets_geo2_inside) %>% 
+  skimr::kable()
+```
+
+### Missing data
+
+```{r}
+gg_miss_var(tweets_geo2_inside, show_pct = TRUE)
+```
+
+### Locations
+
+```{r}
+length(unique((c(tweets_geo2_inside$lat, tweets_geo2_inside$lon))))
+```
+
+
+### Time
+
+```{r}
+summary(tweets_geo2_inside$created_at)
+```
+
+
+## `tweets_place` 
+
+`tweets_place` dataset has `r nrow(tweets_place)` rows and `r ncol(tweets_place)` columns.
+
+### Structure
+
+```{r, results='asis'}
+skim(tweets_place) %>% 
+  skimr::kable()
+```
+
+### Missing data
+
+```{r}
+gg_miss_var(tweets_place, show_pct = TRUE)
+```
+
+### Locations
+
+```{r}
+length(unique((tweets_place$place_full_name)))
+```
+
+
+### Time
+
+```{r}
+summary(tweets_place$created_at)
+```

@@ -1,0 +1,509 @@
+---
+title: "Facebook data - EDA 03"
+author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readxl, magrittr, anytime, here,
+       skimr, sjmisc, naniar, kableExtra, scales, vcd, 
+       sf, tmap, tmaptools)
+
+tmap_mode("view") # makes map interactive
+
+```
+
+
+```{r geodata_prep, eval=FALSE, include=FALSE}
+library(rmapshaper)
+
+# postcode outlines 
+# exclude 'No usual address (Aust.)' 
+# exclude 'Migratory - Offshore - Shipping (Aust.)'
+
+POA <- sf::read_sf(here("data", "geo", "1270055003_poa_2016_aust_shape", "POA_2016_AUST.shp")) %>% 
+  filter(POA_CODE16 != "9494") %>% 
+  filter(POA_CODE16 != "9797") 
+
+# table(POA$POA_CODE16 == POA$POA_NAME16)
+POA$POA_NAME16 <- NULL
+
+class(POA); nrow(POA); names(POA); st_crs(POA); str(POA)
+format(object.size(POA), units = "Mb")
+
+# View(POA)
+# qtm(POA)
+
+POA_centr <- st_centroid(POA, of_largest_polygon = TRUE)
+qtm(POA_centr)
+saveRDS(POA_centr, file = here("data", "geo", "POA_2016_AUST_centr.rds"))
+
+POA_simp <- ms_simplify(POA, keep = 0.15, weighting = 0.75) # default settings
+
+format(object.size(POA_simp), units = "Mb")
+nrow(POA_simp)
+qtm(POA_simp)
+
+# sf::write_sf(POA_simp, here("data", "geo", "POA_2016_AUST_simp.shp"), delete_layer = TRUE)
+saveRDS(POA_simp, file = here("data", "geo", "POA_2016_AUST_simp.rds"))
+```
+
+
+```{r geodata_load, include=FALSE}
+POA_simp <- readRDS(file = here("data", "geo", "POA_2016_AUST_simp.rds"))
+POA_centr <- readRDS(file = here("data", "geo", "POA_2016_AUST_centr.rds"))
+```
+
+
+# Data collection
+
+> Each row represents the response from a GET request
+
+See desc from Alex for further details. 
+
+# Data description
+
+**estimated_dau** – estimated daily average users
+
+**estimated_mau** – estimated monthly average users
+
+Also from Alex:
+
+> Response errors are recorded by the presence of a JSON string in the 'error_message' column; nulls in 'error_message' mean no request/response errors
+
+
+# Data prep
+
+```{r fbook_prepare, eval=FALSE, include=FALSE}
+p_load(bigrquery)
+
+project <- "goopla-1509504704864"
+# project <- "twitter-stream-205107"
+
+# sql <- "SELECT * FROM `twitter-stream-205107.twitter_stream.facebook_updated`"
+# 
+# tb <- bq_project_query(project, sql)
+# facebook_new_raw <- bq_table_download(tb)
+# 
+# saveRDS(facebook_new_raw, file = "./data/Facebook/raw/facebook_new_raw.rds")
+
+sql <- "WITH slice_time_data AS
+  (
+    SELECT
+      *,
+      CASE
+        WHEN datetime_diff(utc_time, LAG(utc_time, 1) OVER(PARTITION BY postcode, location_type ORDER BY utc_time), SECOND) > 10 THEN utc_time
+        WHEN utc_time >= '2019-03-27' AND age_group = '18-65+' THEN utc_time
+        WHEN LAG(utc_time, 1) OVER(PARTITION BY postcode, location_type ORDER BY utc_time) IS NULL THEN utc_time
+        ELSE NULL
+      END AS slice_time
+    FROM `twitter-stream-205107.twitter_stream.facebook_updated` 
+  )
+   
+  SELECT
+    utc_time,
+    postcode,
+    location_type,
+    age_group,
+    gender,
+    estimated_mau,
+    estimated_dau,
+    CONCAT(postcode, '|', location_type, '|', CAST(
+      LAST_VALUE(slice_time IGNORE NULLS) OVER(PARTITION BY postcode, location_type ORDER BY utc_time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+    AS STRING)) AS slice_id,
+    error_message
+  FROM slice_time_data
+"
+
+tb <- bq_project_query(project, sql)
+facebook_slice_raw <- bq_table_download(tb)
+rm(tb, sql)
+
+saveRDS(facebook_slice_raw, file = "./data/Facebook/raw/facebook_slice_raw.rds")
+```
+
+```{r fbook_load, eval=FALSE}
+# facebook_new_raw <- readRDS("./data/Facebook/raw/facebook_new_raw.rds") 
+facebook_slice_raw <- readRDS("./data/Facebook/raw/facebook_slice_raw.rds") 
+```
+
+Postcodes:
+
+- **9494** *No usual address* 
+- **9797** *Migratory - Offshore - Shipping* 
+- **2899** *Norfolk Island*
+- **6798** *Christmas Island*
+- **6799** *Cocos Islands*
+
+were excluded. 
+
+Data with wrong time stamp were excluded. 
+
+Data with missing `location_type` were also excluded. 
+
+They all returned error messages. 
+
+Data collected before 1st Sept were excluded (sparse & incorrect?).
+
+# Clean dataset
+
+```{r, eval=FALSE}
+facebook_slice <- facebook_slice_raw %>% 
+  filter(utc_time != anydate("1970-01-01")) %>% 
+  filter(utc_time >= anydate("2018-09-01")) %>% 
+  filter(postcode != "") %>% 
+  filter(postcode != "9494") %>% 
+  filter(postcode != "9797") %>% 
+  filter(postcode != "2899") %>% 
+  filter(postcode != "6798") %>% 
+  filter(postcode != "6799") %>% 
+  filter(!is.na(location_type)) %>% 
+  filter(is.na(error_message)) %>% 
+  select(-error_message) %>% 
+  group_by(slice_id) %>% 
+  # mutate(date_min = min(as.Date(utc_time)), 
+  #        date_max = max(as.Date(utc_time))) %>% 
+  mutate(date = max(as.Date(utc_time))) %>% 
+  ungroup() %>% 
+  arrange(slice_id) %>% 
+  select(utc_time, date, dplyr::everything())
+
+# length(unique(facebook_new_raw$postcode))
+# length(unique(facebook_slice$postcode))
+# postcodes <- as.data.frame(sort(table(facebook_slice$postcode), decreasing=T))
+
+saveRDS(facebook_slice, file = "./Data/Facebook/clean/facebook_slice.Rds")
+rm(facebook_slice_raw)
+```
+
+```{r}
+facebook_slice <- readRDS("./data/Facebook/clean/facebook_slice.rds") 
+```
+
+```{r, results='asis'}
+# skim(facebook_slice)
+skim(facebook_slice) %>% skimr::kable()
+```
+
+## Results
+
+### Scrap type
+
+Different types of scraps were done for different regions and at different times.
+
+```{r}
+ggplot(facebook_slice, aes(x=date)) +
+  geom_histogram(binwidth = 1) + 
+  facet_wrap(~location_type) + 
+  theme_minimal() + 
+  xlab("") + ylab("No. of data points")
+```
+
+We have three major "batches" of data:
+
+#### Sept 2018
+
+```{r}
+facebook_slice_2018_09 <- facebook_slice %>% 
+  filter(date <= anydate("2018-11-01")) 
+```
+
+Age combined (18-65), men & women combined, collected on ~2weeks for `r comma(length(unique(facebook_slice_2018_09$postcode)))` postocdes.
+
+```{r}
+mosaic(~ age_group + gender, data = facebook_slice_2018_09)
+```
+
+No. of data points:
+
+```{r}
+ggplot(facebook_slice_2018_09, aes(x=date)) +
+  geom_histogram(binwidth = 1) + 
+  facet_wrap(~location_type) + 
+  theme_minimal() + 
+  xlab("") + ylab("No. of data points")
+```
+
+Example numbers for `4067` postcode
+
+```{r}
+facebook_slice_2018_09 %>% 
+  filter(postcode == 4067) %>% 
+  ggplot(aes(x=utc_time, y=estimated_dau, colour=location_type)) +
+  geom_line() +
+  theme_minimal() + 
+  xlab("") + ylab("Estimated dau")
+```
+
+
+#### Nov 2018
+
+```{r}
+facebook_slice_2018_11 <- facebook_slice %>% 
+  filter(date >= anydate("2018-10-01") & date <= anydate("2018-12-01"))
+```
+
+Age split (18-24 to 60-65; in 5y age bands), men & women separately, collected on ~1day for `r comma(length(unique(facebook_slice_2018_11$postcode)))` postocdes.
+
+```{r}
+mosaic(~ age_group + gender, data = facebook_slice_2018_11)
+```
+
+No. of data points:
+
+```{r}
+ggplot(facebook_slice_2018_11, aes(x=age_group)) +
+  geom_histogram(stat = "count") + 
+  facet_wrap(location_type~gender, ncol = 2) + 
+  theme_minimal() + 
+  xlab("") + ylab("No. of data points")
+```
+
+#### Dec 2018
+
+```{r}
+facebook_slice_2018_12 <- facebook_slice %>% 
+  filter(date >= anydate("2018-12-01")) %>% 
+  filter(gender == "both") %>%
+  select(-gender) %>% 
+  droplevels() %>% 
+  group_by(postcode, date, location_type) %>% 
+  mutate(slice_count = n()) %>% 
+  ungroup() %>% 
+  filter(slice_count >= 10) %>% 
+  group_by(postcode, date, location_type, age_group) %>% 
+  arrange(utc_time) %>% 
+  filter(row_number()==1) %>% 
+  ungroup() %>% 
+  group_by(postcode, date, location_type) %>% 
+  mutate(slice_count = n()) %>% 
+  ungroup() %>% 
+  select(utc_time, date, dplyr::everything())
+
+# facebook_slice_2018_12 %>%
+#   frq(slice_count)
+# 
+# facebook_slice_2018_12 %<>% 
+#   select(-slice_count)
+
+saveRDS(facebook_slice_2018_12, file = "./Data/Facebook/clean/facebook_slice_2018_12.Rds")
+```
+
+Age split (18-24 to 60-65; in 5y age bands), men & women combined, collected from Dec 2018 - till present, `r comma(length(unique(facebook_slice_2018_12$postcode)))` Qld postcodes only.
+
+From `XXXX-XX-XX` data were also collected for `18-65+` category (ie total).
+
+```{r}
+mosaic(~ age_group, data = facebook_slice_2018_12)
+```
+
+No. of data points:
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  ggplot(aes(x=date)) +
+  geom_histogram(binwidth = 1) + 
+  facet_wrap(~location_type, ncol = 2) + 
+  theme_minimal() + 
+  xlab("") + ylab("No. of data points")
+```
+
+Example numbers for `4067` postcode:
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == 4067) %>% 
+  ggplot(aes(x=utc_time, y=estimated_dau, colour=age_group)) +
+  geom_line() +
+  theme_minimal() + 
+  xlab("") + ylab("Estimated dau")
+```
+
+Example numbers for `4067` postcode:
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group == "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == 4067) %>% 
+  ggplot(aes(x=utc_time, y=estimated_dau, colour=age_group)) +
+  geom_line() +
+  theme_minimal() + 
+  xlab("") + ylab("Estimated dau")
+```
+
+```{r eval=FALSE, include=FALSE}
+# Time is UTC - needs to be changed if used!
+summary(facebook_slice$utc_time)
+table(attr(facebook_slice$utc_time, "tzone"))
+# attr(facebook_slice$utc_time, "tzone") <- "Australia/Brisbane"
+# summary(facebook_slice$utc_time)
+# table(attr(facebook_slice$utc_time, "tzone"))
+```
+
+### Dec 2018 dataset - example time series
+
+```{r eval=FALSE, include=FALSE}
+fbook_agg_maxmin <- facebook_slice_2018_12 %>% 
+  group_by(postcode, location_type, age_group) %>% 
+  dplyr::summarise(Min_dau = min(estimated_dau),
+                   Max_dau = max(estimated_dau),
+                   Dif_dau = Max_dau - Min_dau,
+                   Ratio_dau = Max_dau / Min_dau,
+                   Min_mau = min(estimated_mau),
+                   Max_mau = max(estimated_mau)  ,
+                   Dif_dau = Max_mau - Min_mau,
+                   Ratio_dau = Max_mau / Min_mau
+  ) %>% 
+  ungroup()
+
+fbook_agg_median <- facebook_slice_2018_12 %>% 
+  group_by(postcode , location_type, age_group) %>% 
+  dplyr::summarise(Observations = n(), 
+                   # Mean_dau = mean(estimated_dau),
+                   Median_dau = median(estimated_dau),
+                   # Mean_mau = mean(estimated_mau),
+                   Median_mau = median(estimated_mau)
+  ) %>% 
+  ungroup()
+
+```
+
+#### Postcode **4072** St Lucia:
+
+`location_type` "recently"
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == "4072") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+`location_type` "travelling"
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "travelling") %>% 
+  filter(postcode == "4072") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+`location_type` "recently"
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group == "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == "4072") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+`location_type` "travelling"
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group == "18-65+") %>% 
+  filter(location_type == "travelling") %>% 
+  filter(postcode == "4072") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+#### Postcodes around Townsville 
+
+```{r}
+POA_simp %>% 
+  filter(POA_CODE16 >= 4810 & POA_CODE16 <= 4818) %>% 
+  filter(POA_CODE16 != 4816) %>% 
+  qtm(borders = "red", text = "POA_CODE16", fill = NULL)
+```
+
+4810 
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == "4810") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+4811 
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == "4811") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+4812 
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == "4812") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+4814 
+
+```{r}
+facebook_slice_2018_12 %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "recently") %>% 
+  filter(postcode == "4814") %>% 
+  ggplot(aes(x=date, y=estimated_dau, group=age_group, colour=age_group)) +
+  geom_point() + 
+  theme_minimal() + xlab("") 
+```
+
+
+
+
+
+
+
+
+
+
