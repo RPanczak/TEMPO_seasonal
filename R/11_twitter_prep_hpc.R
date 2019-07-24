@@ -3,7 +3,7 @@
 # Twitter - data preparation HPC
 
 # messaging file
-fileConn <- file("/RDS/Q0786/data/Twitter/clean/tweets_proc_2019_07_22.log", "w")
+fileConn <- file("/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/tweets_proc_2019_07_22.log", "w")
 writeLines(paste(Sys.time(), "Job started"), fileConn)
 
 set.seed(12345)
@@ -17,16 +17,16 @@ isUnique <- function(vector){
 # #################################################
 # #################################################
 # Geo data
-STE <- readOGR("/RDS/Q0786/data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST.shp")
+STE <- readOGR("/RDS/Q1168/TEMPO_seasonal/data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST.shp")
 STE$AREASQKM16 <- NULL
 STE <- spTransform(STE, CRS("+init=epsg:4326"))
 
 # buffer 0.5 degrees prepared in ArcGIS
-STE_b_05 <- readOGR("/RDS/Q0786/data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST_B05.shp")
+STE_b_05 <- readOGR("/RDS/Q1168/TEMPO_seasonal/data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST_B05.shp")
 STE_b_05 <- spTransform(STE_b_05, CRS("+init=epsg:4326"))
 
 # Data  
-tweets_raw <- readRDS("/RDS/Q0786/data/Twitter/raw/tweets_raw.rds")
+tweets_raw <- readRDS("/RDS/Q1168/TEMPO_seasonal/data/Twitter/raw/tweets_raw.rds")
 
 # #################################################
 # #################################################
@@ -107,8 +107,8 @@ geo1_sp <- SpatialPointsDataFrame(coords = geo1[ , c("geo_lon", "geo_lat")],
                                   data = geo1, 
                                   proj4string = CRS("+init=epsg:4326"))
 
-saveRDS(geo1_sp, file = "/RDS/Q0786/data/Twitter/clean/geo1_sp.rds")
-# writeOGR(geo1_sp, dsn = "/RDS/Q0786/data/Twitter/clean/", layer= "geo1_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
+saveRDS(geo1_sp, file = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/geo1_sp.rds")
+# writeOGR(geo1_sp, dsn = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/", layer= "geo1_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
 
 tweets_proc_2019_07_22 %<>% 
   mutate(orig_lat = lat) %>% 
@@ -129,8 +129,8 @@ geo2_sp <- SpatialPointsDataFrame(coords = geo2[ , c("lon", "lat")],
                                   data = geo2, 
                                   proj4string = CRS("+init=epsg:4326"))
 
-saveRDS(geo2_sp, file = "/RDS/Q0786/data/Twitter/clean/geo2_sp.rds")
-# writeOGR(geo2_sp, dsn = "/RDS/Q0786/data/Twitter/clean/", layer= "geo2_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
+saveRDS(geo2_sp, file = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/geo2_sp.rds")
+# writeOGR(geo2_sp, dsn = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/", layer= "geo2_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
 
 
 ##### Tweets **inside** Oz
@@ -141,8 +141,8 @@ geo2_inside_sp <- SpatialPointsDataFrame(coords = geo2[ , c("lon", "lat")],
 
 geo2_inside_sp <- geo2_inside_sp[!is.na(sp::over(geo2_inside_sp, as(STE_b_05, "SpatialPolygons"))),]
 
-saveRDS(geo2_inside_sp, file = "/RDS/Q0786/data/Twitter/clean/geo2_inside_sp.rds")
-# writeOGR(geo2_inside_sp, dsn = "/RDS/Q0786/data/Twitter/clean/", layer= "geo2_inside_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
+saveRDS(geo2_inside_sp, file = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/geo2_inside_sp.rds")
+# writeOGR(geo2_inside_sp, dsn = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/", layer= "geo2_inside_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
 
 
 ##### Tweets **outside**  Oz
@@ -157,8 +157,8 @@ geo2_outside_sp <- SpatialPointsDataFrame(coords = geo2_outside_sp[ , c("lon", "
                                           data = geo2_outside_sp, 
                                           proj4string = CRS("+init=epsg:4326"))
 
-saveRDS(geo2_outside_sp, file = "/RDS/Q0786/data/Twitter/clean/geo2_outside_sp.rds")
-# writeOGR(geo2_outside_sp, dsn = "/RDS/Q0786/data/Twitter/clean/", layer= "geo2_outside_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
+saveRDS(geo2_outside_sp, file = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/geo2_outside_sp.rds")
+# writeOGR(geo2_outside_sp, dsn = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/", layer= "geo2_outside_sp", driver = "ESRI Shapefile", overwrite_layer = TRUE) 
 
 
 #### `place_full_name`
@@ -180,7 +180,7 @@ complete_place_full_name <- tweets_proc_2019_07_22 %>%
   arrange(desc(freq)) %>% 
   ungroup()
 
-saveRDS(complete_place_full_name, file = "/RDS/Q0786/data/Twitter/clean/complete_place_full_name.rds")
+saveRDS(complete_place_full_name, file = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/complete_place_full_name.rds")
 
 # #################################################
 ### Fixing timezones
@@ -192,9 +192,9 @@ complete_tweets_geo_tz <- tweets_proc_2019_07_22 %>%
   filter(!is.na(lat)) %>% 
   select(-count)
 
-saveRDS(complete_tweets_geo_tz, file = "/RDS/Q0786/data/Twitter/clean/complete_tweets_geo_tz.rds")
+saveRDS(complete_tweets_geo_tz, file = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/complete_tweets_geo_tz.rds")
 
-saveRDS(tweets_proc_2019_07_22, file = "/RDS/Q0786/data/Twitter/clean/tweets_proc_2019_07_22.rds")
+saveRDS(tweets_proc_2019_07_22, file = "/RDS/Q1168/TEMPO_seasonal/data/Twitter/clean/tweets_proc_2019_07_22.rds")
 
 
 # #################################################
