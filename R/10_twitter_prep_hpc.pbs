@@ -3,7 +3,7 @@
 #PBS -l walltime=02:00:00
 
 # script
-cat /RDS/Q0786/11_twitter_prep_hpc.R | tr -d '\r' > $TMPDIR/11_twitter_prep_hpc.R
+cat /RDS/Q1168/TEMPO_seasonal/R/10_twitter_prep_hpc.R | tr -d '\r' > $TMPDIR/10_twitter_prep_hpc.R
 
 cd $TMPDIR
 
@@ -13,4 +13,4 @@ module load gdal
 module load proj
 module load R
 
-R CMD BATCH --verbose --no-save --no-restore 11_twitter_prep_hpc.R
+R CMD BATCH --verbose --no-save --no-restore 10_twitter_prep_hpc.R
