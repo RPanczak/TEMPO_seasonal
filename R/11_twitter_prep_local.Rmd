@@ -1,5 +1,5 @@
 ---
-title: "Twitter - data preparation 04"
+title: "Twitter - data preparation"
 author: "Radoslaw Panczak"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 mainfont: DejaVu Sans
@@ -103,12 +103,14 @@ rm(project, sql, tb)
 # Data prep  
 
 ```{r}
-tweets_clean_2019_03_18 <- readRDS("./data/Twitter/clean/tweets_proc_2019_07_22.rds") %>% 
+tweets_clean_2019_07_22 <- 
+  # readRDS("./data/Twitter/clean/tweets_proc_2019_07_22.rds") %>% 
+  readRDS("R:/POP247-Q0786/data/Twitter/clean/tweets_proc_2019_07_22.rds") %>% 
   select(-place_url, -user_geo_enabled, -user_verified, -lang) %>% 
   filter(!is.na(created_at))
 
-# sjmisc::frq(tweets_clean_2019_03_18, source, sort.frq = "desc")
-# sjmisc::descr(tweets_clean_2019_03_18, lat)
+# sjmisc::frq(tweets_clean_2019_07_22, source, sort.frq = "desc")
+# sjmisc::descr(tweets_clean_2019_07_22, lat)
 
 ```
 
@@ -134,7 +136,7 @@ Problem with `user_id_str` character in scientific notation (like `1.00031e+18`)
 #   summarise(count = n()) %>%
 #   arrange(desc(count))
 
-both <- tweets_clean_2019_03_18 %>%
+both <- tweets_clean_2019_07_22 %>%
   group_by(user_id_str, user_screen_name) %>%
   summarise(count = n()) %>%
   arrange(desc(count))
@@ -182,7 +184,7 @@ Similarly, because of scientific notation there is a problem with `id_str` chara
 # length(tweets_proc_2019_07_22$id_str)
 # length(unique(tweets_proc_2019_07_22$id_str))
 
-tweets_clean_2019_03_18 %>% 
+tweets_clean_2019_07_22 %>% 
   select(id_str, created_at, place_full_name) %>% 
   filter(id_str == "1.00028e+18")
 
@@ -210,13 +212,13 @@ tm_shape(geo1_sp) + tm_bubbles(size = "freq", col = "red")
 Quite few of them turned out to be good candidates for deletions: 
 
 ```{r include=FALSE}
-temp2 <- tweets_clean_2019_03_18 %>% 
+temp2 <- tweets_clean_2019_07_22 %>% 
   group_by(user_description) %>% 
   summarise(freq = n()) %>% 
   arrange(desc(freq)) %>% 
   ungroup()
 
-tweets_clean_2019_03_18 %<>% 
+tweets_clean_2019_07_22 %<>% 
   filter(!grepl("semi automated bot", user_description, ignore.case = TRUE)) %>% 
   filter(!grepl("unofficial bot", user_description, ignore.case = TRUE)) %>% 
   filter(!grepl("Traffic alerts", user_description, ignore.case = TRUE)) %>% 
@@ -229,10 +231,7 @@ tweets_clean_2019_03_18 %<>%
   filter(!grepl("NSW RFS Incident feed", user_description, ignore.case = TRUE)) %>% 
   filter(!grepl("West Coast Sentinel", user_description, ignore.case = TRUE))
 
-rm(tweets_proc_2019_07_22)
-gc()
-
-temp1 <- tweets_clean_2019_03_18 %>% 
+temp1 <- tweets_clean_2019_07_22 %>% 
   group_by(user_description) %>% 
   summarise(freq = n()) %>% 
   arrange(desc(freq)) %>% 
@@ -257,7 +256,7 @@ gc()
 Remaining tweets with more precise coordinates were used to replace `lat` & `lon` values.
 
 ```{r, eval=TRUE}
-tweets_clean_2019_03_18 %<>% 
+tweets_clean_2019_07_22 %<>% 
   mutate(orig_lat = lat) %>% 
   mutate(orig_lon = lon) %>% 
   mutate(lat = ifelse(are_na(geo_lat), lat, geo_lat)) %>% 
@@ -292,7 +291,7 @@ gc()
 ```{r}
 geo2_inside_sp <- readRDS(file = "./data/Twitter/clean/geo2_inside_sp.rds")
 
-tweets_geo2_inside <- left_join(geo2_inside_sp@data, tweets_clean_2019_03_18) %>% 
+tweets_geo2_inside <- left_join(geo2_inside_sp@data, tweets_clean_2019_07_22) %>% 
   ungroup() %>%
   select(-freq) %>% 
   filter(!is.na(created_at))
@@ -319,12 +318,12 @@ gc()
 ```{r}
 geo2_outside_sp <- readRDS(file = "./data/Twitter/clean/geo2_outside_sp.rds")
 
-tweets_geo2_outside <- left_join(geo2_outside_sp@data, tweets_clean_2019_03_18) %>% 
+tweets_geo2_outside <- left_join(geo2_outside_sp@data, tweets_clean_2019_07_22) %>% 
   filter(!is.na(created_at))
 
-tweets_clean_2019_03_18 <- anti_join(tweets_clean_2019_03_18, select(geo2_outside_sp@data, lon, lat)) 
+tweets_clean_2019_07_22 <- anti_join(tweets_clean_2019_07_22, select(geo2_outside_sp@data, lon, lat)) 
 
-geo2_outside_places <- geo2_outside %>% 
+geo2_outside_places <- tweets_geo2_outside %>% 
   select(place_full_name) %>% 
   group_by(place_full_name) %>% 
   summarise(freq = n()) %>% 
@@ -358,7 +357,7 @@ gc()
 ### Geocoding `place_full_name`
 
 ```{r}
-place_full_name <- tweets_clean_2019_03_18 %>% 
+place_full_name <- tweets_clean_2019_07_22 %>% 
   filter(are_na(lat)) %>% 
   group_by(place_full_name) %>% 
   summarise(freq = n()) %>% 
@@ -380,18 +379,18 @@ Unfortunately there are `r comma(nrow(place_full_name))` distinct locations ment
 descr(place_full_name$freq) 
 ```
 
-That unfortunatly can also create bias towards more frequent places!
+Hovewer, this solution might also create bias towards more frequent places?!
 
-[OpenCage](https://opencagedata.com) (via package `opencage`) was used to get coordinates for these places. Locations with `place_place_type == "country"` (for instance "Australia", "Indonesia") and `place_place_type == "admin"` (which captured states, for instance "Victoria, Australia" or "Nusa Tenggara Oriental, Indonesia") were excluded from geocoding.If multiple places were found, then the first (probably best?) was kept.  
+[OpenCage](https://opencagedata.com) (via package `opencage`) was used to get coordinates for these places. Locations with `place_place_type == "country"` (for instance "Australia", "Indonesia") and `place_place_type == "admin"` (which captured states, for instance "Victoria, Australia" or "Nusa Tenggara Oriental, Indonesia") were excluded from geocoding (they will also be escluded from prepared `places` dataset!). If multiple places were found, then the first (probably best?) was kept.  
 
 ```{r eval=FALSE, include=FALSE}
-frq(tweets_clean_2019_03_18$place_place_type) 
+frq(tweets_clean_2019_07_22$place_place_type) 
 
-tweets_clean_2019_03_18 %>% 
+tweets_clean_2019_07_22 %>% 
   filter(place_place_type == "country") %>% 
   frq(place_full_name, sort.frq = "desc")
 
-tweets_clean_2019_03_18 %>% 
+tweets_clean_2019_07_22 %>% 
   filter(place_place_type == "admin") %>% 
   frq(place_full_name, sort.frq = "desc")
 ```
@@ -399,7 +398,7 @@ tweets_clean_2019_03_18 %>%
 Also, places with the same Twitter name can be categorized in different ways resulting in duplicates:
 
 ```{r}
-tweets_clean_2019_03_18 %>% 
+tweets_clean_2019_07_22 %>% 
   filter(is.na(lat)) %>% 
   filter(place_place_type != "country") %>% 
   filter(place_place_type != "admin") %>% 
@@ -412,12 +411,9 @@ tweets_clean_2019_03_18 %>%
 
 These duplicates were ignored for geocoding. 
 
-
 ```{r, eval=FALSE}
-place_full_name <- tweets_clean_2019_03_18 %>% 
+place_full_name <- tweets_clean_2019_07_22 %>% 
   filter(is.na(lat)) %>% 
-  filter(place_place_type != "country") %>% 
-  filter(place_place_type != "admin") %>% 
   group_by(place_full_name) %>% 
   summarise(freq = n()) %>% 
   arrange(desc(freq)) %>% 
@@ -601,7 +597,7 @@ tweets_place_tz <- place_full_name %>%
 tweets_place_tz$tz <- tz_lookup_coords(tweets_place_tz$ext_lat, tweets_place_tz$ext_lon, method = "accurate")
 # sjmisc::frq(tweets_place_tz, tz, sort.frq = "desc", show.na = TRUE) 
 
-tweets_place <- tweets_clean_2019_03_18 %>% 
+tweets_place <- tweets_clean_2019_07_22 %>% 
   filter(is.na(lat)) %>% 
   filter(place_place_type != "country") %>% 
   filter(place_place_type != "admin") %>% 
@@ -615,8 +611,8 @@ rm(tweets_place_tz)
 ```{r, eval=FALSE}
 #### `user_utc_offset` and `user_time_zone`
 
-sjmisc::frq(tweets_clean_2019_03_18, user_utc_offset, sort.frq = "desc", show.na = TRUE) 
-sjmisc::frq(tweets_clean_2019_03_18, user_time_zone, sort.frq = "desc", show.na = TRUE) 
+sjmisc::frq(tweets_clean_2019_07_22, user_utc_offset, sort.frq = "desc", show.na = TRUE) 
+sjmisc::frq(tweets_clean_2019_07_22, user_time_zone, sort.frq = "desc", show.na = TRUE) 
 
 # Check if `user_utc_offset` and `user_time_zone` can be of any use here? 
 
@@ -624,7 +620,7 @@ sjmisc::frq(tweets_clean_2019_03_18, user_time_zone, sort.frq = "desc", show.na 
 
 ## Finding bots
 
-Note: only `tweets_geo2_inside` was prepared at this stage
+Note: only `tweets_geo2_inside` datset was prepared at this stage
 
 ### Using very frequent tweets
 
@@ -749,7 +745,7 @@ gc()
 
 
 ```{r, include=FALSE}
-tweets_clean_2019_03_18 %<>% 
+tweets_clean_2019_07_22 %<>% 
   select(id_str, user_id_str, user_screen_name, UID, 
          created_at, 
          lat, lon, geo_lat, geo_lon, orig_lat, orig_lon, 
@@ -776,7 +772,8 @@ tweets_place %<>%
 
 saveRDS(tweets_geo2_inside, file = "./data/Twitter/clean/tweets_geo2_inside.rds")
 saveRDS(tweets_place, file = "./data/Twitter/clean/tweets_place.rds")
-saveRDS(tweets_clean_2019_03_18, file = "./data/Twitter/clean/tweets_clean_2019_03_18.rds")
+
+saveRDS(tweets_clean_2019_07_22, file = "./data/Twitter/clean/tweets_clean_2019_07_22.rds")
 
 ```
 
@@ -788,24 +785,24 @@ saveRDS(tweets_clean_2019_03_18, file = "./data/Twitter/clean/tweets_clean_2019_
 ```{r}
 # tweets_geo2_inside <- readRDS(file = "./data/Twitter/clean/tweets_geo2_inside.rds")
 # tweets_place <- readRDS(file = "./data/Twitter/clean/tweets_place.rds")
-# tweets_clean_2019_03_18 <- readRDS(file = "./data/Twitter/clean/tweets_clean_2019_03_18.rds")
+# tweets_clean_2019_07_22 <- readRDS(file = "./data/Twitter/clean/tweets_clean_2019_07_22.rds")
 ```
 
-## `tweets_clean_2019_03_18` 
+## `tweets_clean_2019_07_22` 
 
-`tweets_clean_2019_03_18` dataset has `r nrow(tweets_clean_2019_03_18)` rows and `r ncol(tweets_clean_2019_03_18)` columns.
+`tweets_clean_2019_07_22` dataset has `r nrow(tweets_clean_2019_07_22)` rows and `r ncol(tweets_clean_2019_07_22)` columns.
 
 ### Structure
 
 ```{r, results='asis'}
-skim(tweets_clean_2019_03_18) %>% 
+skim(tweets_clean_2019_07_22) %>% 
   skimr::kable()
 ```
 
 ### Missing data
 
 ```{r}
-gg_miss_var(tweets_clean_2019_03_18, show_pct = TRUE)
+gg_miss_var(tweets_clean_2019_07_22, show_pct = TRUE)
 ```
 
 ### Time
@@ -813,13 +810,13 @@ gg_miss_var(tweets_clean_2019_03_18, show_pct = TRUE)
 It's UTC for everybody!
 
 ```{r}
-summary(tweets_clean_2019_03_18$created_at)
+summary(tweets_clean_2019_07_22$created_at)
 ```
 
 There is a gap?
 
 ```{r}
-tweets_clean_2019_03_18 %>% 
+tweets_clean_2019_07_22 %>% 
   # slice(1:10) %>% 
   select(created_at) %>% 
   mutate(date = as.Date(created_at)) %>% 
@@ -830,7 +827,7 @@ tweets_clean_2019_03_18 %>%
 ```
 
 ```{r eval=FALSE, include=FALSE}
-temp <- tweets_clean_2019_03_18 %>% 
+temp <- tweets_clean_2019_07_22 %>% 
   # slice(1:10) %>%
   select(created_at) %>% 
   mutate(date = as.Date(created_at)) %>% 
