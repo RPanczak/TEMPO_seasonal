@@ -192,8 +192,40 @@ tweets_clean_2019_07_22 %>%
 
 **Currently - no steps taken to resolve that.**
 
-
 ## Geography
+
+### Poor spatial resolution
+
+```{r}
+# tweets_clean_2019_07_22 %>% 
+#   filter(place_place_type == "country") %>% 
+#   frq(place_full_name, sort.frq = "desc")
+# 
+# tweets_clean_2019_07_22 %>% 
+#   filter(place_place_type == "admin") %>% 
+#   frq(place_full_name, sort.frq = "desc")
+
+temp <- tweets_clean_2019_07_22 %>% 
+  filter((place_place_type == "country" | place_place_type == "admin") & is.na(lat)) %>% 
+  group_by(place_full_name) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq))
+```
+
+```{r}
+temp %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+There are `r comma(sum(temp$freq))` tweets from `r comma(nrow(temp))` locations that have no geographic coordinates and `place_type` variable that indicates only country or large admin region (state). These tweets were removed from the data since little geographical analyses could be done here.
+
+```{r}
+tweets_clean_2019_07_22 %<>% 
+  filter(!is.na(lat) & place_place_type != "country" & place_place_type != "admin")
+
+rm(temp)
+```
 
 ### `geo` variable
 
@@ -381,18 +413,10 @@ descr(place_full_name$freq)
 
 Hovewer, this solution might also create bias towards more frequent places?!
 
-[OpenCage](https://opencagedata.com) (via package `opencage`) was used to get coordinates for these places. Locations with `place_place_type == "country"` (for instance "Australia", "Indonesia") and `place_place_type == "admin"` (which captured states, for instance "Victoria, Australia" or "Nusa Tenggara Oriental, Indonesia") were excluded from geocoding (they will also be escluded from prepared `places` dataset!). If multiple places were found, then the first (probably best?) was kept.  
+[OpenCage](https://opencagedata.com) (via package `opencage`) was used to get coordinates for these places. If multiple places were found, then the first (probably best?) was kept.  
 
 ```{r eval=FALSE, include=FALSE}
 frq(tweets_clean_2019_07_22$place_place_type) 
-
-tweets_clean_2019_07_22 %>% 
-  filter(place_place_type == "country") %>% 
-  frq(place_full_name, sort.frq = "desc")
-
-tweets_clean_2019_07_22 %>% 
-  filter(place_place_type == "admin") %>% 
-  frq(place_full_name, sort.frq = "desc")
 ```
 
 Also, places with the same Twitter name can be categorized in different ways resulting in duplicates:
@@ -400,8 +424,6 @@ Also, places with the same Twitter name can be categorized in different ways res
 ```{r}
 tweets_clean_2019_07_22 %>% 
   filter(is.na(lat)) %>% 
-  filter(place_place_type != "country") %>% 
-  filter(place_place_type != "admin") %>% 
   group_by(place_full_name, place_place_type) %>% 
   summarise(freq = n()) %>% 
   arrange(desc(freq)) %>% 
@@ -599,8 +621,6 @@ tweets_place_tz$tz <- tz_lookup_coords(tweets_place_tz$ext_lat, tweets_place_tz$
 
 tweets_place <- tweets_clean_2019_07_22 %>% 
   filter(is.na(lat)) %>% 
-  filter(place_place_type != "country") %>% 
-  filter(place_place_type != "admin") %>% 
   left_join(tweets_place_tz)
 
 rm(tweets_place_tz)
