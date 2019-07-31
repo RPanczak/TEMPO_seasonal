@@ -924,3 +924,32 @@ summary(tweets_geo2_inside$created_at)
 ```
 
 
+## `tweets_place`
+
+`tweets_place` dataset has `r nrow(tweets_place)` rows and `r ncol(tweets_place)` columns.
+
+### Structure
+
+```{r, results='asis'}
+skim(tweets_place) %>%
+  skimr::kable()
+```
+
+### Missing data
+
+```{r}
+gg_miss_var(tweets_place, show_pct = TRUE)
+```
+
+### Locations
+
+```{r}
+length(unique((tweets_place$place_full_name)))
+```
+
+
+### Time
+
+```{r}
+summary(tweets_place$created_at)
+```
