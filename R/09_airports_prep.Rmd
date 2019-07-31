@@ -1,0 +1,200 @@
+---
+title: "Airports - data preparation 01"
+author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readr, readxl, magrittr, 
+       naniar, janitor, scales, lubridate,  
+       skimr, sjmisc, kableExtra, webshot, 
+       sf, tmap, tmaptools, ggmap)
+
+tmap_mode("view") # makes map interactive
+```
+
+# Data 
+
+Data comes from [BITRE](https://www.bitre.gov.au/publications/ongoing/airport_traffic_data.aspx)
+
+```{r}
+webshot("https://www.bitre.gov.au/publications/ongoing/airport_traffic_data.aspx", 
+        "./data/BITRE/docs/bitre-zoomed.png", zoom = 0.5) # %>% shrink()
+```
+
+The release used is `WebMonthlyAirportMay2019.xls`.
+
+```{r message=FALSE}
+airport <- read_excel("data/BITRE/raw/WebMonthlyAirportMay2019.xls", 
+                      sheet = "Airport Passengers", skip = 6) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  filter(airport != "All Australian Airports") %>% 
+  select(-inbound_10, -outbound_11, -starts_with("total_")) %>% 
+  mutate(airport = paste0(str_to_title(airport), " Airport")) %>% 
+  rename(dom_in = inbound_4, dom_out = outbound_5,
+         int_in = inbound_7, int_out = outbound_8) %>%
+  mutate(date = ymd(paste0(year, "-", month, "-1"), tz = "Australia/Brisbane")) %>% 
+  select(airport, date, everything())
+
+airport_2018 <- airport %>% 
+  filter(year == 2018) %>%
+  group_by(airport) %>% 
+  mutate(dom_in_t = sum(dom_in),
+         dom_out_t = sum(dom_out),
+         int_in_t = sum(int_in),
+         int_out_t = sum(int_out)) %>% 
+  ungroup() %>% 
+  mutate(dom_in_p = (dom_in/dom_in_t)*100,
+         dom_out_p = (dom_out/dom_out_t)*100,
+         int_in_p = (int_in/int_in_t)*100,
+         int_out_p = (int_out/int_out_t)*100) %>%   
+  select(airport, date, 
+         dom_in, dom_in_t, dom_in_p,
+         dom_out, dom_out_t, dom_out_p,
+         int_in, int_in_t, int_in_p,
+         int_out, int_out_t, int_out_p)
+```
+
+# Airport locations
+
+There are `r length(unique(airport$airport))` airports listed in the data. They were geocoded using Google Maps. 
+
+```{r eval=FALSE, include=FALSE}
+airport_geo <- tibble::enframe(unique(airport$airport), name = NULL, value = "airport") %>% 
+  add_column(lat = NA) %>% 
+  add_column(lon = NA) %>% 
+  add_column(loctype = NA)
+
+key <- readr::read_file("geocode.txt")
+
+register_google(key = key) 
+
+# geocode("Adelaide Airport, Australia", source = "google", output = "all")
+# geocode("Launceston Airport", source = "google", output = "all")
+# geocode("Perth Airport", source = "google", output = "all")
+
+for(i in 1:nrow(airport_geo)) {
+  
+  temp <- geocode(paste0(as.character(airport_geo$airport[i]), ", Australia"), 
+                  source = "google", output = "more")
+  
+  airport_geo$lat[i] <- temp$lat
+  airport_geo$lon[i] <- temp$lon
+  airport_geo$loctype[i] <- temp$loctype
+  
+}
+
+airport_geo %<>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
+
+# table(st_is_valid(airport_geo))
+
+saveRDS(airport_geo, "data/BITRE/clean/airport_geo.Rds")
+```
+
+
+```{r}
+airport_geo <- readRDS("data/BITRE/clean/airport_geo.Rds")
+
+airport_geo %>% 
+  tm_shape() + 
+  tm_markers(text = "airport", clustering = FALSE)
+```
+
+
+# Time trends 2009+
+
+## Domestic inbound 
+
+```{r}
+airport %>% 
+  ggplot(aes(x = date, y = dom_in, group = airport, colour = airport)) +
+  geom_line() + 
+  theme_light() + 
+  ylab("Domestic inbound passengers") + xlab("")
+```
+
+## International outbound
+
+```{r}
+airport %>% 
+  filter(int_out > 0) %>% 
+  ggplot(aes(x = date, y = int_out, group = airport, colour = airport)) +
+  geom_line() + 
+  theme_light() + 
+  ylab("Int'l outbound passengers") + xlab("")
+```
+
+# 2018 data
+
+## Absolute numbers
+
+
+```{r}
+airport_2018 %>% 
+  filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", "Adelaide Airport", "Gold Coast Airport")) %>%
+  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
+  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
+  filter(is.na(measure)) %>% 
+  ggplot(aes(x = date, y = passengers, fill = interaction(source, bound))) +
+  geom_col() + 
+  facet_wrap(~airport, scales = "fixed") +
+  theme_light() + 
+  ylab("No. of passengers") + xlab("")
+```
+
+
+
+```{r}
+airport_2018 %>% 
+  filter(! airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", "Adelaide Airport", "Gold Coast Airport")) %>%
+  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
+  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
+  filter(is.na(measure)) %>% 
+  ggplot(aes(x = date, y = passengers, fill = interaction(source, bound))) +
+  geom_col() + 
+  facet_wrap(~airport, scales = "fixed") +
+  theme_light() + 
+  ylab("No. of passengers") + xlab("")
+```
+
+
+## Relative numbers
+
+```{r}
+airport_2018 %>% 
+  # filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", "Adelaide Airport", "Gold Coast Airport")) %>%
+  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
+  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
+  filter(measure == "p") %>% 
+  ggplot(aes(x = date, y = passengers, colour = source, linetype = bound)) +
+  geom_line() + 
+  facet_wrap(~airport, scales = "fixed") +
+  theme_light() + 
+  ylab("% of 2018 passengers") + xlab("")
+
+
+```
+
