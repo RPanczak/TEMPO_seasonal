@@ -120,9 +120,9 @@ airport_geo <- readRDS("data/BITRE/clean/airport_geo.Rds")
 
 airport_geo %>% 
   tm_shape() + 
-  tm_markers(text = "airport", clustering = FALSE)
+  tm_dots(text = "airport")
+  # tm_markers(text = "airport", clustering = FALSE)
 ```
-
 
 # Time trends 2009+
 
@@ -154,7 +154,8 @@ airport %>%
 
 ```{r}
 airport_2018 %>% 
-  filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", "Adelaide Airport", "Gold Coast Airport")) %>%
+  filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", 
+                        "Adelaide Airport", "Gold Coast Airport")) %>%
   gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
   separate(type, sep = "_", c("source", "bound", "measure")) %>% 
   filter(is.na(measure)) %>% 
@@ -169,7 +170,8 @@ airport_2018 %>%
 
 ```{r}
 airport_2018 %>% 
-  filter(! airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", "Adelaide Airport", "Gold Coast Airport")) %>%
+  filter(! airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", 
+                          "Adelaide Airport", "Gold Coast Airport")) %>%
   gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
   separate(type, sep = "_", c("source", "bound", "measure")) %>% 
   filter(is.na(measure)) %>% 
@@ -195,6 +197,22 @@ airport_2018 %>%
   theme_light() + 
   ylab("% of 2018 passengers") + xlab("")
 
+```
+
+Clearer trends without two last months from Newcastle
+
+```{r}
+airport_2018 %>% 
+  filter(!(airport == "Newcastle Airport" & date >= ymd("2018-11-01"))) %>%
+  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
+  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
+  filter(measure == "p") %>% 
+  ggplot(aes(x = date, y = passengers, colour = source, linetype = bound)) +
+  geom_line() + 
+  facet_wrap(~airport, scales = "fixed") +
+  theme_light() + 
+  ylab("% of 2018 passengers") + xlab("")
 
 ```
+
 
