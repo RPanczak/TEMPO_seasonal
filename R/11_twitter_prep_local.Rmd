@@ -20,7 +20,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
 
-# setwd('R:/TWITTER-I0479')
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 
 options(scipen=999)
 set.seed(12345)
@@ -37,14 +37,14 @@ isUnique <- function(vector){
   return(!any(duplicated(vector)))
 }
 
-# State data
-STE <- st_transform(st_read("./data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST.shp"), 4326)
-STE$AREASQKM16 <- NULL
-# st_is_valid(STE)
-
-# buffer 0.5 degrees prepared in ArcGIS
-STE_b_05 <- st_transform(st_read("./data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST_B05.shp"), 4326)
-# st_is_valid(STE_b_05)
+# # State data
+# STE <- st_transform(st_read("./data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST.shp"), 4326)
+# STE$AREASQKM16 <- NULL
+# # st_is_valid(STE)
+# 
+# # buffer 0.5 degrees prepared in ArcGIS
+# STE_b_05 <- st_transform(st_read("./data/geo/1270055001_ste_2016_aust_shape/STE_2016_AUST_B05.shp"), 4326)
+# # st_is_valid(STE_b_05)
 
 ```
 
@@ -71,14 +71,6 @@ saveRDS(tweets_raw, file = "./data/Twitter/raw/tweets_raw.rds")
 # tweets_raw_10k <- tweets_raw %>% 
 #   sample_n(10000)
 # saveRDS(tweets_raw_10k, file = "./data/raw/tweets_raw_10k.rds")
-# 
-# tweets_raw_100k <- tweets_raw %>% 
-#   sample_n(100000)
-# saveRDS(tweets_raw_100k, file = "./data/raw/tweets_raw_100k.rds")
-# 
-# tweets_raw_1m <- tweets_raw %>% 
-#   sample_n(1000000)
-# saveRDS(tweets_raw_1m, file = "./data/raw/tweets_raw_1m.rds")
 
 # saving to a bucket 
 # bq_table_save(tb, "gs://twitter_stream-streaming/2018-12-04_*.csv")
@@ -95,8 +87,7 @@ rm(project, sql, tb)
 <!-- ------------------------------------------------------------ --> 
 
 ```{r, eval=FALSE}
-# Preprocessing done on HPC!
-# R:\POP247-Q0786\11_twitter_prep_hpc.R
+# Preprocessing done on HPC using script 11_twitter_prep_hpc.R
 ```
 
 <!-- ------------------------------------------------------------ --> 
@@ -104,8 +95,8 @@ rm(project, sql, tb)
 
 ```{r}
 tweets_clean_2019_07_22 <- 
-  # readRDS("./data/Twitter/clean/tweets_proc_2019_07_22.rds") %>% 
-  readRDS("R:/POP247-Q0786/data/Twitter/clean/tweets_proc_2019_07_22.rds") %>% 
+  readRDS("./data/Twitter/clean/tweets_proc_2019_07_22.rds") %>%
+  # readRDS("R:/POP247-Q0786/data/Twitter/clean/tweets_proc_2019_07_22.rds") %>% 
   select(-place_url, -user_geo_enabled, -user_verified, -lang) %>% 
   filter(!is.na(created_at))
 
@@ -114,7 +105,7 @@ tweets_clean_2019_07_22 <-
 
 ```
 
-Preprocessed dataset has `r comma(nrow(tweets_proc_2019_07_22))` rows and `r comma(ncol(tweets_proc_2019_07_22))` columns
+Preprocessed dataset has `r comma(nrow(tweets_clean_2019_07_22))` rows and `r comma(ncol(tweets_clean_2019_07_22))` columns
 
 ## IDs
 
@@ -206,24 +197,27 @@ tweets_clean_2019_07_22 %>%
 #   frq(place_full_name, sort.frq = "desc")
 
 temp <- tweets_clean_2019_07_22 %>% 
-  filter((place_place_type == "country" | place_place_type == "admin") & is.na(lat)) %>% 
-  group_by(place_full_name) %>% 
-  summarise(freq = n()) %>% 
-  arrange(desc(freq))
+  filter((place_place_type == "country" | place_place_type == "admin") & is.na(lat)) 
+
+# anyDuplicated(temp)
+
 ```
+
+There are `r comma(nrow(temp))` tweets from `r comma(length(unique(temp$place_full_name)))` locations that have no geographic coordinates and `place_type` variable that indicates only country or large admin region (state). 
 
 ```{r}
 temp %>% 
+  group_by(place_full_name) %>% 
+  summarise(freq = n()) %>% 
+  arrange(desc(freq)) %>% 
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
 ```
 
-There are `r comma(sum(temp$freq))` tweets from `r comma(nrow(temp))` locations that have no geographic coordinates and `place_type` variable that indicates only country or large admin region (state). These tweets were removed from the data since little geographical analyses could be done here.
+These tweets were removed from the data since little geographical analyses could be done here.
 
 ```{r}
-tweets_clean_2019_07_22 %<>% 
-  filter(!is.na(lat) & place_place_type != "country" & place_place_type != "admin")
-
+tweets_clean_2019_07_22 %<>%  anti_join(temp)
 rm(temp)
 ```
 
@@ -250,7 +244,7 @@ temp2 <- tweets_clean_2019_07_22 %>%
   arrange(desc(freq)) %>% 
   ungroup()
 
-tweets_clean_2019_07_22 %<>% 
+tweets_clean_2019_07_22 %<>%
   filter(!grepl("semi automated bot", user_description, ignore.case = TRUE)) %>% 
   filter(!grepl("unofficial bot", user_description, ignore.case = TRUE)) %>% 
   filter(!grepl("Traffic alerts", user_description, ignore.case = TRUE)) %>% 
@@ -272,7 +266,7 @@ temp1 <- tweets_clean_2019_07_22 %>%
 temp3 <- anti_join(temp2, temp1)
 ```
 
-`r comma(sum(temp3$freq))` tweets of `r comma(nrow(temp3))` bot-like users were excluded.
+`r comma(sum(temp3$freq))` tweets of `r comma(nrow(temp3))` bot-like users were excluded. Here are descriptions and frequencies: 
 
 ```{r}
 temp3 %>% 
@@ -282,7 +276,6 @@ temp3 %>%
 
 ```{r include=FALSE}
 rm(temp1, temp2, temp3, geo1_sp)
-gc()
 ```
 
 Remaining tweets with more precise coordinates were used to replace `lat` & `lon` values.
@@ -314,7 +307,6 @@ They clearly reflect `bbox` used for search and still include tweets located, fo
 
 ```{r include=FALSE}
 rm(geo2_sp)
-gc()
 ```
 
 
@@ -333,7 +325,6 @@ tweets_geo2_inside <- left_join(geo2_inside_sp@data, tweets_clean_2019_07_22) %>
 # ggplot(tweets_geo2_inside) + 
 #   geom_histogram(aes(created_at)) + 
 #   scale_x_datetime()
-
 ```
 
 From tweets with coordinates mentioned above, there are `r comma(sum(geo2_inside_sp$freq))` tweets in `r comma(nrow(geo2_inside_sp))` distinct locations having coordinates and overlaying shape of Austrlia with 0.5 degree buffer around it (*to capture islands, reef, imprecise coords*). 
@@ -342,7 +333,6 @@ Note: map too large for interactive.
 
 ```{r include=FALSE}
 rm(geo2_inside_sp)
-gc()
 ```
 
 #### Tweets outside  Oz
@@ -381,7 +371,7 @@ geo2_outside_places %>%
 These tweets have now been excluded. Some of the them could be rescued with a bit of cleaning? It seems that some of the place names could be used to bring them back? 
 
 ```{r include=FALSE}
-rm(geo2_outside_sp, geo2_outside_places)
+rm(geo2_outside_sp, geo2_outside_places, tweets_geo2_outside)
 gc()
 ```
 
@@ -396,7 +386,7 @@ place_full_name <- tweets_clean_2019_07_22 %>%
   arrange(desc(freq)) 
 ```
 
-Large chunk of tweets - `r comma(sum(place_full_name$freq))` to be specific, have no coordinates but are labeled with `place_full_name`. Here are top 30 most frequent, with corresponding number of tweets missing coordinates from that places: 
+Large chunk of tweets - `r comma(sum(place_full_name$freq))` to be specific, have **no Twitter coordinates**. They are however labeled with `place_full_name`. Here are top 30 most frequent, with corresponding number of tweets missing coordinates from that places: 
 
 ```{r}
 place_full_name %>% 
@@ -413,7 +403,7 @@ descr(place_full_name$freq)
 
 Hovewer, this solution might also create bias towards more frequent places?!
 
-[OpenCage](https://opencagedata.com) (via package `opencage`) was used to get coordinates for these places. If multiple places were found, then the first (probably best?) was kept.  
+[Google Maps Geocoding API](https://developers.google.com/maps/documentation/geocoding/intro) (via package `ggmap`) was used to get coordinates for these places.   
 
 ```{r eval=FALSE, include=FALSE}
 frq(tweets_clean_2019_07_22$place_place_type) 
@@ -491,33 +481,23 @@ rm(key)
 
 ```
 
-Here are first 1000 most frequent locations that are currently geocoded. 
+Here are some first, **experimental**, most frequent locations that are currently geocoded via Google. 
 
 ```{r}
-place_full_name <- readRDS(file = "./data/Twitter/clean/place_full_name.rds")
+place_full_name <- readRDS("./data/Twitter/clean/place_full_name_google.rds")
 
-place_full_name_sf <- place_full_name %>% 
-  drop_na(ext_lat) %>% 
-  filter(ext_lat != 0) %>% 
-  st_as_sf(coords = c("ext_lon", "ext_lat"), crs = 4326)
+# place_full_name_sf <- place_full_name %>% 
+#   drop_na(ext_lat) %>% 
+#   filter(ext_lat != 0) %>% 
+#   st_as_sf(coords = c("ext_lon", "ext_lat"), crs = 4326, remove = FALSE)
 
 # table(st_is_valid(place_full_name_sf))
 
-place_full_name_sf %>% 
+place_full_name %>% 
   slice(1:1000) %>% 
   tm_shape() + tm_bubbles(size = "freq", col = "red")
 
 ```
-
-There were some issues with quality of geocoding. For instance "Sydney (Kingsford Smith) Airport (SYD)" was geocoded to "29 SMITHS AV, REDCLIFFE WA 6104, Australia" (for some mysterious reason?)
-
-```{r, eval=FALSE}
-place_full_name_sf %>% 
-  filter(place_full_name == "Sydney (Kingsford Smith) Airport (SYD)") %>% 
-  tm_shape() + tm_dots(col = "red")
-```
-
-Working further with this data would require some cleaning to be done here.
 
 ## Fixing timezones
 
@@ -607,15 +587,19 @@ sjmisc::frq(tweets_geo2_inside, tz, sort.frq = "desc", show.na = TRUE)
 
 ### place name data
 
-```{r, include=FALSE}
+**TBD after goecoding..**
+
+```{r eval=FALSE, include=FALSE}
 tweets_place_tz <- place_full_name %>% 
   filter(ext_lat != 0) %>% 
   select(place_full_name, ext_lat, ext_lon)
+
+# `r nrow(tweets_place_tz)` geocoded locations (inside Oz) had their time zone updated.
+
 ```
 
-`r nrow(tweets_place_tz)` geocoded locations (inside Oz) had their time zone updated. 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tweets_place_tz$tz <- tz_lookup_coords(tweets_place_tz$ext_lat, tweets_place_tz$ext_lon, method = "accurate")
 # sjmisc::frq(tweets_place_tz, tz, sort.frq = "desc", show.na = TRUE) 
 
@@ -640,7 +624,7 @@ sjmisc::frq(tweets_clean_2019_07_22, user_time_zone, sort.frq = "desc", show.na 
 
 ## Finding bots
 
-Note: only `tweets_geo2_inside` datset was prepared at this stage
+Note: only geolocated tweets (`tweets_geo2_inside` datset) have been prepared at this stage.
 
 ### Using very frequent tweets
 
@@ -755,7 +739,57 @@ temp2 %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
 ```
 
-```{r include=FALSE}
+```{r eval=FALSE, include=FALSE}
+temp <- temp1 %>% 
+  filter(UID == 16169) 
+
+temp %>% 
+  group_by(lon, lat) %>% 
+  summarise(freq = n()) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red")
+
+temp %>% 
+  dplyr::filter(speed < 200 & !is.na(speed)) %>% 
+  group_by(lon, lat) %>% 
+  summarise(freq = n()) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red")
+
+temp %>% 
+  dplyr::filter(speed >= 200 & !is.na(speed)) %>% 
+  group_by(lon, lat) %>% 
+  summarise(freq = n()) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red")
+
+
+
+temp <- temp1 %>% 
+  filter(UID == 174582) 
+
+temp %>% 
+  group_by(lon, lat) %>% 
+  summarise(freq = n()) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red")
+
+temp %>% 
+  dplyr::filter(speed < 200 & !is.na(speed)) %>% 
+  group_by(lon, lat) %>% 
+  summarise(freq = n()) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red")
+
+temp %>% 
+  dplyr::filter(speed >= 200 & !is.na(speed)) %>% 
+  group_by(lon, lat) %>% 
+  summarise(freq = n()) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>% 
+  tm_shape() + tm_bubbles(size = "freq", col = "red")
+```
+
+```{r eval=FALSE, include=FALSE}
 tweets_geo2_inside %<>% 
   anti_join(select(temp3, UID))
 
@@ -763,6 +797,7 @@ rm(temp1, temp2, temp3)
 gc()
 ```
 
+Less conservative approach would be to removeonly particular tweets?
 
 ```{r, include=FALSE}
 tweets_clean_2019_07_22 %<>% 
@@ -773,6 +808,8 @@ tweets_clean_2019_07_22 %<>%
          everything(), source) %>% 
   arrange(created_at, UID)
 
+saveRDS(tweets_clean_2019_07_22, file = "./data/Twitter/clean/tweets_clean_2019_07_22.rds")
+
 tweets_geo2_inside %<>% 
   select(id_str, user_id_str, user_screen_name, UID, 
          created_at, tz, 
@@ -782,19 +819,17 @@ tweets_geo2_inside %<>%
   select(-timestamp_ms) %>% 
   arrange(created_at, UID)
 
-tweets_place %<>% 
-  select(id_str, user_id_str, user_screen_name, UID, 
-         created_at, 
-         lat, lon, geo_lat, geo_lon, ext_lat, ext_lon, orig_lat, orig_lon, 
-         starts_with("place"), 
-         everything(), source) %>% 
-  arrange(created_at, UID)
-
 saveRDS(tweets_geo2_inside, file = "./data/Twitter/clean/tweets_geo2_inside.rds")
-saveRDS(tweets_place, file = "./data/Twitter/clean/tweets_place.rds")
 
-saveRDS(tweets_clean_2019_07_22, file = "./data/Twitter/clean/tweets_clean_2019_07_22.rds")
+# tweets_place %<>% 
+#   select(id_str, user_id_str, user_screen_name, UID, 
+#          created_at, 
+#          lat, lon, geo_lat, geo_lon, ext_lat, ext_lon, orig_lat, orig_lon, 
+#          starts_with("place"), 
+#          everything(), source) %>% 
+#   arrange(created_at, UID)
 
+# saveRDS(tweets_place, file = "./data/Twitter/clean/tweets_place.rds")
 ```
 
 
@@ -889,32 +924,3 @@ summary(tweets_geo2_inside$created_at)
 ```
 
 
-## `tweets_place` 
-
-`tweets_place` dataset has `r nrow(tweets_place)` rows and `r ncol(tweets_place)` columns.
-
-### Structure
-
-```{r, results='asis'}
-skim(tweets_place) %>% 
-  skimr::kable()
-```
-
-### Missing data
-
-```{r}
-gg_miss_var(tweets_place, show_pct = TRUE)
-```
-
-### Locations
-
-```{r}
-length(unique((tweets_place$place_full_name)))
-```
-
-
-### Time
-
-```{r}
-summary(tweets_place$created_at)
-```
