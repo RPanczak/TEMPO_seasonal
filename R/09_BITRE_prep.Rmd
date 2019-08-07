@@ -1,5 +1,5 @@
 ---
-title: "Airports - data preparation 01"
+title: "BITRE airports data preparation 01"
 author: "Radoslaw Panczak"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 mainfont: DejaVu Sans
