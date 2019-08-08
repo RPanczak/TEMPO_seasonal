@@ -1,0 +1,170 @@
+---
+title: "Brisbane airport data preparation"
+author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readxl, janitor, lubridate)
+```
+
+# Data 
+
+Data comes from Brisbane Airport Corporation Pty Ltd. The release used is `20190806 UQ data request.xlsx`.
+
+```{r message=FALSE}
+brisbane_int_arr <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx", 
+                      sheet = "International Terminal", skip = 1) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(x1, x00_2:x23_25) %>% 
+  rename(date = x1) %>% 
+  filter(date != "Total") %>% 
+  mutate(date = dmy(date)) %>% 
+  gather("time", "passengers", -date) %>% 
+  mutate(time = str_sub(time, 2, 3)) %>% 
+  mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
+  mutate(time = as.integer(time)) %>% 
+  mutate(type = "International") %>% 
+  mutate(direction = "Arrival")
+
+brisbane_int_dep <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx", 
+                      sheet = "International Terminal", skip = 1) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(x1, x00_27:x23_50) %>% 
+  rename(date = x1) %>% 
+  filter(date != "Total") %>% 
+  mutate(date = dmy(date)) %>% 
+  gather("time", "passengers", -date) %>% 
+  mutate(time = str_sub(time, 2, 3)) %>% 
+  mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
+  mutate(time = as.integer(time)) %>% 
+  mutate(type = "International") %>% 
+  mutate(direction = "Departure")
+
+brisbane_dom_arr <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx", 
+                      sheet = "Domestic Terminal", skip = 1) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(x1, x00_2:x23_25) %>% 
+  rename(date = x1) %>% 
+  filter(date != "Total") %>% 
+  mutate(date = dmy(date)) %>% 
+  gather("time", "passengers", -date) %>% 
+  mutate(time = str_sub(time, 2, 3)) %>% 
+  mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
+  mutate(time = as.integer(time)) %>% 
+  mutate(type = "Domestic") %>% 
+  mutate(direction = "Arrival")
+
+# data from 2AM & 3AM are missing here
+brisbane_dom_dep <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx", 
+                      sheet = "Domestic Terminal", skip = 1) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(x1, x00_27:x23_48) %>% # difference!
+  rename(date = x1) %>% 
+  filter(date != "Total") %>% 
+  mutate(date = dmy(date)) %>% 
+  gather("time", "passengers", -date) %>% 
+  mutate(time = str_sub(time, 2, 3)) %>% 
+  mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
+  mutate(time = as.integer(time)) %>% 
+  mutate(type = "Domestic") %>% 
+  mutate(direction = "Departure")
+
+
+brisbane <- bind_rows(brisbane_int_arr, brisbane_int_dep,
+                      brisbane_dom_arr, brisbane_dom_dep) %>% 
+  select(date, time, date_time, type, direction, passengers) %>% 
+  arrange(type, direction, date_time)
+
+rm(brisbane_int_arr, brisbane_int_dep, brisbane_dom_arr, brisbane_dom_dep)
+# View(brisbane)
+saveRDS(brisbane, "data/BAC/clean/brisbane.Rds")
+```
+
+# Time trends 2018
+
+## Hourly data 
+
+```{r}
+brisbane %>% 
+  ggplot(aes(x = date_time, y = passengers)) +
+  geom_col() + 
+  theme_light() + 
+  ylab("BNE passengers") + xlab("") + 
+  facet_wrap(~interaction(type, direction))
+```
+
+## Daily data
+
+```{r}
+brisbane %>% 
+  group_by(date, type, direction) %>% 
+  summarise(passengers = sum(passengers)) %>% 
+  ggplot(aes(x = date, y = passengers)) +
+  geom_col() + 
+  theme_light() + 
+  ylab("BNE passengers") + xlab("") + 
+  facet_wrap(~interaction(type, direction)) 
+```
+
+## HOD data
+
+```{r eval=FALSE, include=FALSE}
+brisbane %>% 
+  ggplot(aes(x = time, group = time, y = passengers)) +
+  geom_boxplot() + 
+  theme_light() + 
+  ylab("BNE passengers") + xlab("") + 
+  facet_wrap(~interaction(type, direction)) 
+```
+
+```{r}
+brisbane %>% 
+  mutate(month = month(date)) %>% 
+  ggplot(aes(x = time, group = date, y = passengers, colour = month)) +
+  scale_colour_distiller(type = "div", palette = "RdYlGn", direction = 1) + 
+  geom_line(size = 1, alpha = .1) + 
+  theme_light() + 
+  ylab("BNE passengers") + xlab("") + 
+  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3))) +
+  facet_wrap(~interaction(type, direction)) # + coord_polar()
+```
+
+## DOW data
+
+```{r}
+brisbane %>% 
+  filter(type == "Domestic") %>% 
+  filter(direction == "Arrival") %>% 
+  mutate(wday = wday(date, label = TRUE, abbr = TRUE, week_start = 1)) %>% 
+  mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+  ggplot(aes(x = month, y = passengers, fill = wday)) +
+  geom_boxplot() + 
+  theme_light() + 
+  ylab("BNE passengers") + xlab("")
+```
