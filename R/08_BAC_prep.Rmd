@@ -1,5 +1,5 @@
 ---
-title: "Brisbane airport data preparation 01"
+title: "Brisbane airport data preparation"
 author: "Radoslaw Panczak"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 mainfont: DejaVu Sans
@@ -26,11 +26,7 @@ options(scipen=999)
 set.seed(12345)
 
 library(pacman) 
-p_load(tidyverse, readr, readxl, magrittr, 
-       naniar, janitor, scales, lubridate,  
-       skimr, sjmisc, kableExtra)
-
-tmap_mode("view") # makes map interactive
+p_load(tidyverse, readxl, janitor, lubridate)
 ```
 
 # Data 
@@ -50,177 +46,125 @@ brisbane_int_arr <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx",
   mutate(time = str_sub(time, 2, 3)) %>% 
   mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
   mutate(time = as.integer(time)) %>% 
-  mutate(type = "international") %>% 
-  mutate(direction = "arrival")
-  
-x00_27:x23_50
-  
+  mutate(type = "International") %>% 
+  mutate(direction = "Arrival")
 
-View(brisbane_int)
+brisbane_int_dep <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx", 
+                      sheet = "International Terminal", skip = 1) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(x1, x00_27:x23_50) %>% 
+  rename(date = x1) %>% 
+  filter(date != "Total") %>% 
+  mutate(date = dmy(date)) %>% 
+  gather("time", "passengers", -date) %>% 
+  mutate(time = str_sub(time, 2, 3)) %>% 
+  mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
+  mutate(time = as.integer(time)) %>% 
+  mutate(type = "International") %>% 
+  mutate(direction = "Departure")
+
+brisbane_dom_arr <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx", 
+                      sheet = "Domestic Terminal", skip = 1) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(x1, x00_2:x23_25) %>% 
+  rename(date = x1) %>% 
+  filter(date != "Total") %>% 
+  mutate(date = dmy(date)) %>% 
+  gather("time", "passengers", -date) %>% 
+  mutate(time = str_sub(time, 2, 3)) %>% 
+  mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
+  mutate(time = as.integer(time)) %>% 
+  mutate(type = "Domestic") %>% 
+  mutate(direction = "Arrival")
+
+# data from 2AM & 3AM are missing here
+brisbane_dom_dep <- read_xlsx("data/BAC/raw/20190806 UQ data request.xlsx", 
+                      sheet = "Domestic Terminal", skip = 1) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(x1, x00_27:x23_48) %>% # difference!
+  rename(date = x1) %>% 
+  filter(date != "Total") %>% 
+  mutate(date = dmy(date)) %>% 
+  gather("time", "passengers", -date) %>% 
+  mutate(time = str_sub(time, 2, 3)) %>% 
+  mutate(date_time = ymd_h(paste(as.character(date), time))) %>% 
+  mutate(time = as.integer(time)) %>% 
+  mutate(type = "Domestic") %>% 
+  mutate(direction = "Departure")
 
 
+brisbane <- bind_rows(brisbane_int_arr, brisbane_int_dep,
+                      brisbane_dom_arr, brisbane_dom_dep) %>% 
+  select(date, time, date_time, type, direction, passengers) %>% 
+  arrange(type, direction, date_time)
 
-  mutate(airport = paste0(str_to_title(airport), " Airport")) %>% 
-  rename(dom_in = inbound_4, dom_out = outbound_5,
-         int_in = inbound_7, int_out = outbound_8) %>%
-  mutate(date = ymd(paste0(year, "-", month, "-1"), tz = "Australia/Brisbane")) %>% 
-  select(airport, date, everything())
-
-airport_2018 <- airport %>% 
-  filter(year == 2018) %>%
-  group_by(airport) %>% 
-  mutate(dom_in_t = sum(dom_in),
-         dom_out_t = sum(dom_out),
-         int_in_t = sum(int_in),
-         int_out_t = sum(int_out)) %>% 
-  ungroup() %>% 
-  mutate(dom_in_p = (dom_in/dom_in_t)*100,
-         dom_out_p = (dom_out/dom_out_t)*100,
-         int_in_p = (int_in/int_in_t)*100,
-         int_out_p = (int_out/int_out_t)*100) %>%   
-  select(airport, date, 
-         dom_in, dom_in_t, dom_in_p,
-         dom_out, dom_out_t, dom_out_p,
-         int_in, int_in_t, int_in_p,
-         int_out, int_out_t, int_out_p)
+rm(brisbane_int_arr, brisbane_int_dep, brisbane_dom_arr, brisbane_dom_dep)
+# View(brisbane)
+saveRDS(brisbane, "data/BAC/clean/brisbane.Rds")
 ```
 
-# Airport locations
+# Time trends 2018
 
-There are `r length(unique(airport$airport))` airports listed in the data. They were geocoded using Google Maps. 
+## Hourly data 
+
+```{r}
+brisbane %>% 
+  ggplot(aes(x = date_time, y = passengers)) +
+  geom_col() + 
+  theme_light() + 
+  ylab("BNE passengers") + xlab("") + 
+  facet_wrap(~interaction(type, direction))
+```
+
+## Daily data
+
+```{r}
+brisbane %>% 
+  group_by(date, type, direction) %>% 
+  summarise(passengers = sum(passengers)) %>% 
+  ggplot(aes(x = date, y = passengers)) +
+  geom_col() + 
+  theme_light() + 
+  ylab("BNE passengers") + xlab("") + 
+  facet_wrap(~interaction(type, direction)) 
+```
+
+## HOD data
 
 ```{r eval=FALSE, include=FALSE}
-airport_geo <- tibble::enframe(unique(airport$airport), name = NULL, value = "airport") %>% 
-  add_column(lat = NA) %>% 
-  add_column(lon = NA) %>% 
-  add_column(loctype = NA)
-
-key <- readr::read_file("geocode.txt")
-
-register_google(key = key) 
-
-# geocode("Adelaide Airport, Australia", source = "google", output = "all")
-# geocode("Launceston Airport", source = "google", output = "all")
-# geocode("Perth Airport", source = "google", output = "all")
-
-for(i in 1:nrow(airport_geo)) {
-  
-  temp <- geocode(paste0(as.character(airport_geo$airport[i]), ", Australia"), 
-                  source = "google", output = "more")
-  
-  airport_geo$lat[i] <- temp$lat
-  airport_geo$lon[i] <- temp$lon
-  airport_geo$loctype[i] <- temp$loctype
-  
-}
-
-airport_geo %<>% 
-  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
-
-# table(st_is_valid(airport_geo))
-
-saveRDS(airport_geo, "data/BITRE/clean/airport_geo.Rds")
-```
-
-
-```{r}
-airport_geo <- readRDS("data/BITRE/clean/airport_geo.Rds")
-
-airport_geo %>% 
-  tm_shape() + 
-  tm_dots(text = "airport")
-# tm_markers(text = "airport", clustering = FALSE)
-```
-
-# Time trends 2009+
-
-## Domestic inbound 
-
-```{r}
-airport %>% 
-  ggplot(aes(x = date, y = dom_in, group = airport, colour = airport)) +
-  geom_line() + 
+brisbane %>% 
+  ggplot(aes(x = time, group = time, y = passengers)) +
+  geom_boxplot() + 
   theme_light() + 
-  ylab("Domestic inbound passengers") + xlab("")
+  ylab("BNE passengers") + xlab("") + 
+  facet_wrap(~interaction(type, direction)) 
 ```
-
-## International outbound
 
 ```{r}
-airport %>% 
-  filter(int_out > 0) %>% 
-  ggplot(aes(x = date, y = int_out, group = airport, colour = airport)) +
-  geom_line() + 
+brisbane %>% 
+  mutate(month = month(date)) %>% 
+  ggplot(aes(x = time, group = date, y = passengers, colour = month)) +
+  scale_colour_distiller(type = "div", palette = "RdYlGn", direction = 1) + 
+  geom_line(size = 1, alpha = .1) + 
   theme_light() + 
-  ylab("Int'l outbound passengers") + xlab("")
+  ylab("BNE passengers") + xlab("") + 
+  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3))) +
+  facet_wrap(~interaction(type, direction)) # + coord_polar()
 ```
 
-# 2018 data
-
-## Absolute numbers
-
+## DOW data
 
 ```{r}
-airport_2018 %>% 
-  filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", 
-                        "Adelaide Airport", "Gold Coast Airport")) %>%
-  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
-  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
-  filter(is.na(measure)) %>% 
-  ggplot(aes(x = date, y = passengers, fill = interaction(source, bound))) +
-  geom_col() + 
-  facet_wrap(~airport, scales = "fixed") +
+brisbane %>% 
+  filter(type == "Domestic") %>% 
+  filter(direction == "Arrival") %>% 
+  mutate(wday = wday(date, label = TRUE, abbr = TRUE, week_start = 1)) %>% 
+  mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+  ggplot(aes(x = month, y = passengers, fill = wday)) +
+  geom_boxplot() + 
   theme_light() + 
-  ylab("No. of passengers") + xlab("")
+  ylab("BNE passengers") + xlab("")
 ```
-
-
-
-```{r}
-airport_2018 %>% 
-  filter(! airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", 
-                          "Adelaide Airport", "Gold Coast Airport")) %>%
-  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
-  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
-  filter(is.na(measure)) %>% 
-  ggplot(aes(x = date, y = passengers, fill = interaction(source, bound))) +
-  geom_col() + 
-  facet_wrap(~airport, scales = "fixed") +
-  theme_light() + 
-  ylab("No. of passengers") + xlab("")
-```
-
-
-## Relative numbers
-
-```{r}
-airport_2018 %>% 
-  # filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", "Adelaide Airport", "Gold Coast Airport")) %>%
-  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
-  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
-  filter(measure == "p") %>% 
-  ggplot(aes(x = date, y = passengers, colour = source, linetype = bound)) +
-  geom_line() + 
-  facet_wrap(~airport, scales = "fixed") +
-  theme_light() + 
-  ylab("% of 2018 passengers") + xlab("")
-
-```
-
-Clearer trends without two last months from Newcastle
-
-```{r}
-airport_2018 %>% 
-  filter(!(airport == "Newcastle Airport" & date >= ymd("2018-11-01"))) %>%
-  gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
-  separate(type, sep = "_", c("source", "bound", "measure")) %>% 
-  filter(measure == "p") %>% 
-  ggplot(aes(x = date, y = passengers, colour = source, linetype = bound)) +
-  geom_line() + 
-  facet_wrap(~airport, scales = "fixed") +
-  theme_light() + 
-  ylab("% of 2018 passengers") + xlab("")
-
-```
-
-
