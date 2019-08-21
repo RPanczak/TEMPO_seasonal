@@ -1,0 +1,81 @@
+---
+title: "TMR data preparation"
+subtitle: `Travel Times for key priority routes` dataset
+author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readr, janitor, lubridate, sf, tmap, tmaptools)
+tmap_mode("view")
+```
+
+# Data 
+
+Data comes from TMR via (Open Data Portal)[https://data.qld.gov.au/dataset/travel-times-for-key-priority-routes].
+
+Some notes from TMR:
+
+1. Coordinate system is WGS84
+2. 0 travel times means no data collected at that time.
+3. Time is AEST
+
+# Locations
+
+```{r message=FALSE}
+locations <- read_csv("data/TMR/Average Travel Times/raw/Priority-Route-Link-Details-2019.csv") %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols"))
+
+origins <- locations %>% 
+  select(-dest_desc, -dest_longitude, -dest_latitude) %>% 
+  st_as_sf(coords = c("origin_longitude", "origin_latitude"), crs = 4326, agr = "constant") %>% 
+  rename(desc = origin_desc) %>% 
+  mutate(type = "0")
+
+destinations <- locations %>% 
+  select(-origin_desc, -origin_longitude, -origin_latitude) %>% 
+  st_as_sf(coords = c("dest_longitude", "dest_latitude"), crs = 4326, agr = "constant") %>% 
+  rename(desc = dest_desc) %>% 
+  mutate(type = "1")
+
+qtm(origins)
+
+lines <- rbind(origins, destinations) %>% 
+  arrange(link_details, type) %>% 
+  group_by(link_details) %>% 
+  dplyr::summarise(from = first(desc), to = last(desc), do_union=FALSE) %>%
+  st_cast("LINESTRING") 
+
+tm_shape(lines) +
+    tm_lines() + 
+  tm_shape(origins) +
+    tm_dots(col = "blue", size = 0.08) +
+  tm_shape(destinations) +
+    tm_dots(col = "red", size = 0.02, shape = 1) 
+
+```
+
+# Time trends 2018
+
