@@ -27,7 +27,7 @@ options(scipen=999)
 set.seed(12345)
 
 library(pacman) 
-p_load(tidyverse, readr, janitor, lubridate, sf, tmap, tmaptools)
+p_load(tidyverse, readr, janitor, visdat, lubridate, sf, tmap, tmaptools)
 tmap_mode("view")
 ```
 
@@ -54,13 +54,13 @@ origins <- locations %>%
   rename(desc = origin_desc) %>% 
   mutate(type = "0")
 
+qtm(origins)
+
 destinations <- locations %>% 
   select(-origin_desc, -origin_longitude, -origin_latitude) %>% 
   st_as_sf(coords = c("dest_longitude", "dest_latitude"), crs = 4326, agr = "constant") %>% 
   rename(desc = dest_desc) %>% 
   mutate(type = "1")
-
-qtm(origins)
 
 lines <- rbind(origins, destinations) %>% 
   arrange(link_details, type) %>% 
@@ -78,4 +78,33 @@ tm_shape(lines) +
 ```
 
 # Time trends 2018
+
+```{r}
+times_jan <- read_csv("data/TMR/Average Travel Times/raw/Priority-Route-Bluetooth-Travel-Times-Jan-2018.csv") %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  na_if(0) %>% 
+  mutate(interval_end = dmy_hm(interval_end, tz = "Australia/Queensland"))
+
+```
+
+## Missing data patterns
+
+```{r}
+times_jan %>% 
+  select(starts_with("x")) %>% 
+  vis_miss()
+```
+
+## Time series
+
+```{r}
+times_jan <- times_jan %>% 
+  gather(starts_with("x"), key = "link_details", value = "speed")
+  
+ggplot(times_jan, 
+       aes(x=interval_end, y=speed, group=link_details)) +
+  geom_line(alpha=0.33) +
+  theme_minimal() + xlab("") + ylab("Average speed")
+```
 
