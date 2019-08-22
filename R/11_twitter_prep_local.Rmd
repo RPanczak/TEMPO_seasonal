@@ -80,6 +80,9 @@ saveRDS(tweets_raw, file = "./data/Twitter/raw/tweets_raw.rds")
 # gsutil cp gs://twitter_stream-streaming/2018-12-04_*.csv R:\TWITTER-I0479\data\raw\2018-12-04\
 # gsutil rm gs://twitter_stream-streaming/2018-12-04_*.csv
 
+
+
+
 rm(project, sql, tb)
 ```
 
