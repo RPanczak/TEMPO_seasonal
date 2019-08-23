@@ -1,0 +1,84 @@
+---
+title: "TMR data preparation"
+subtitle: `Traffic counts` dataset
+author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readr, readxl, janitor, visdat, kableExtra, lubridate, sf, tmap, tmaptools)
+tmap_mode("view")
+```
+
+# Data 
+
+# Locations
+
+```{r message=FALSE}
+locations <- read_xlsx("data/TMR/Traffic_counts/raw/TMR Sites as at August 2019.xlsx") %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(-datum)
+```
+
+## Missing coordinates
+
+```{r}
+locations_mis <- locations %>% 
+  filter(is.na(latitude)) %>% 
+  arrange(site)
+```
+
+There are `r comma(nrow(locations))` listed in `TMR Sites as at August 2019.xlsx` file. `r comma(nrow(locations_mis))` have no coordinates specified. Five first examples:
+
+```{r}
+locations_mis %>% 
+  select(description) %>% 
+  slice(1:5) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+## Clean locations
+
+```{r message=FALSE}
+locations_geo <- locations %>% 
+  filter(!is.na(latitude)) %>% 
+  arrange(site) %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4283, agr = "constant")
+```
+
+`r comma(nrow(locations_geo))` locations have coordinates. 
+
+```{r message=FALSE}
+locations_geo %>% 
+  tm_shape() + 
+  tm_markers()
+
+# locations_geo %>%
+#   tm_shape() +
+#   tm_dots()
+```
+
+
+
