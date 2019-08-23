@@ -1,0 +1,47 @@
+---
+title: "Event calendar Australia 2018"
+subtitle: "Public holidays, school holidays and special events"
+# author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readr, readxl, janitor, kableExtra, lubridate, ozdates, geofacet)
+
+```
+
+# Public holidays
+
+```{r}
+holidays_18 <- aus_public_holidays %>% 
+  filter(year(date) == "2018") %>% 
+  group_by(holiday_name) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  mutate(national = ifelse(n == 8, "yes", "no"),
+         local = ifelse(n == 1, "yes", "no")) %>% 
+select(-n)
+```
+
+# School term dates
+
