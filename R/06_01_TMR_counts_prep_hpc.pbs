@@ -1,0 +1,8 @@
+#PBS -A UQ-SCI-Earth
+#PBS -l select=1:ncpus=1:mem=48GB
+#PBS -l walltime=01:00:00
+
+module purge
+module load R
+
+R CMD BATCH --verbose --no-save --no-restore /90days/uqrpancz/TMR/06_02_TMR_counts_prep_hpc.R
