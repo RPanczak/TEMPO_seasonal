@@ -26,7 +26,7 @@ options(scipen=999)
 set.seed(12345)
 
 library(pacman) 
-p_load(tidyverse, readr, readxl, janitor, kableExtra, lubridate, ozdates, geofacet)
+p_load(tidyverse, readr, readxl, janitor, kableExtra, lubridate, ozdates)#, geofacet)
 
 ```
 
@@ -40,8 +40,40 @@ holidays_18 <- aus_public_holidays %>%
   ungroup() %>% 
   mutate(national = ifelse(n == 8, "yes", "no"),
          local = ifelse(n == 1, "yes", "no")) %>% 
-select(-n)
+  select(-n)
+
+p_unload(ozdates)
+```
+
+
+```{r, fig.width=6, fig.height=8, out.width="600px", out.height="800px"}
+holidays_18 %>% 
+  ggplot() +
+  geom_segment(aes(x = date, y = 1, xend = date, yend = 2, colour = national), size = 1) +
+  # facet_geo(~ jurisdiction, grid = "aus_grid1") 
+  facet_wrap(~ jurisdiction, ncol = 1) +
+  theme_light() +
+  labs(y = "", x = "",
+       title = "Public holidays, Australia 2018") + 
+  theme(axis.text.y=element_blank()) +
+  scale_x_date(date_breaks = "2 months", date_minor_breaks = "1 month", date_labels = "%b")
 ```
 
 # School term dates
+
+```{r}
+school_terms_18 <- read_xlsx("data/school_terms/raw/school_terms_2018.xlsx") %>% 
+  mutate(State_Division = paste(State, Division))
+```
+
+```{r}
+school_terms_18 %>% 
+  ggplot() +
+  geom_errorbar(aes(ymin = Start, ymax = End, x = State, colour = Division), size = 1) +
+  coord_flip() +
+  theme_light() +
+  labs(y = "", x = "",
+       title = "School terms, Australia 2018") + 
+  scale_y_datetime(date_breaks = "2 months", date_minor_breaks = "1 month", date_labels = "%b")
+```
 
