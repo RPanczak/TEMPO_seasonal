@@ -1,0 +1,317 @@
+---
+title: "TMR data preparation"
+subtitle: Traffic counts dataset
+author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
+                      fig.width=9, fig.height=7, dpi=300, out.width="900px", out.height="700px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readr, readxl, lubridate, 
+       scales, janitor, kableExtra, 
+       visdat,
+       sf, tmap, tmaptools)
+tmap_mode("view")
+```
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r eval=FALSE, include=FALSE}
+# impossible to knit with such large things?
+# clumsy solution to prepare aggregates for the mo
+counts_18 <- readRDS(file = "data/TMR/Traffic_counts/clean/counts_18.Rds")
+
+aggregates <- counts_18 %>%
+  filter(value != 0) %>%
+  group_by(site_id) %>%
+  summarise(n = n(), counts = sum(value),
+            min = min(value), max = max(value), range = max - min,
+            mean = mean(counts), median = median(counts)) %>%
+  arrange(desc(n)) %>%
+  ungroup()
+
+saveRDS(aggregates, file = "data/TMR/Traffic_counts/clean/aggregates.Rds")
+
+unique_site_id <- unique(counts_18$site_id)
+saveRDS(unique_site_id, file = "data/TMR/Traffic_counts/clean/unique_site_id.Rds")
+
+counts_select <- counts_18 %>%
+  filter(site_id %in% c(131796, 136081, 50027, 110038))
+saveRDS(counts_select, file = "data/TMR/Traffic_counts/clean/counts_select.Rds")
+```
+
+```{r}
+SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
+  filter(STE_NAME16 == "Queensland")
+
+aggregates <- readRDS(file = "data/TMR/Traffic_counts/clean/aggregates.Rds")
+
+unique_site_id <- readRDS(file = "data/TMR/Traffic_counts/clean/unique_site_id.Rds")
+
+counts_select <- readRDS(file = "data/TMR/Traffic_counts/clean/counts_select.Rds")
+```
+
+# Locations
+
+```{r message=FALSE}
+locations <- read_xlsx("data/TMR/Traffic_counts/raw/TMR Sites as at August 2019.xlsx") %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  select(-datum) %>% 
+  rename(site_id = site) %>% 
+  mutate(site_id = as.integer(site_id))
+
+locations_clean <- locations %>% 
+  # filter(site_id %in% unique(counts_18$site_id))
+  filter(site_id %in% unique_site_id)
+```
+
+There are `r comma(nrow(locations))` listed in `TMR Sites as at August 2019.xlsx` file. `r comma(nrow(locations_clean))` of them have any data in `TMR Traffic Counts 2018.txt` file. 
+
+## Missing coordinates
+
+```{r}
+rm(locations)
+
+locations_mis <- locations_clean %>% 
+  filter(is.na(latitude)) %>% 
+  arrange(site_id)
+```
+
+`r comma(nrow(locations_mis))` have no coordinates specified:
+
+```{r}
+locations_mis %>% 
+  select(description) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+rm(locations_mis)
+```
+
+## Clean locations
+
+```{r message=FALSE, include=FALSE}
+locations_geo <- locations_clean %>% 
+  filter(!is.na(latitude)) %>% 
+  arrange(site_id) %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4283, agr = "constant")
+
+rm(locations_clean)
+locations_geo <- left_join(locations_geo, aggregates)
+gc()
+```
+
+`r comma(nrow(locations_geo))` locations have data & coordinates. 
+
+```{r message=FALSE}
+locations_geo %>% 
+  tm_shape() + 
+  tm_markers()
+```
+
+# Traffic Counts 2018 
+
+```{r}
+# There are `r comma(nrow_counts_18)` traffic counts  in `TMR Traffic Counts 2018.txt` file.
+# `r comma(nrow_counts_18_above_zero)` of those records have vlaues > 0.
+```
+
+## Number of data points 
+
+Sites vary by number of data points:
+
+```{r}
+ggplot(aggregates, aes(n)) +
+  geom_histogram(binwidth = 10000) +
+  theme_light() +
+  labs(y = "Number of locations", x = "Number of data points",
+       caption = "Bar width = 10,000")
+```
+
+```{r}
+locations_geo %>% 
+  tm_shape() +
+  tm_dots(size = "n", col = "n", palette = "RdYlGn", n = 7, 
+          id = "site_id", popup.vars = c("description", "road_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+## Median site traffic
+
+```{r}
+locations_geo %>% 
+  tm_shape() +
+  tm_dots(size = "median", col = "median", palette = "YlOrRd", n = 7, 
+          id = "site_id", popup.vars = c("description", "road_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+## Selected sites
+
+### Gold coast traffic
+
+```{r out.width="400px", out.height="400px"}
+locations_geo %>% 
+  filter(site_id == 131796) %>% 
+  tm_shape() +
+  tm_dots(id = "site_id", popup.vars = c("description", "road_name", "locality", "region_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+All data points
+
+```{r}
+counts_select %>% 
+  filter(site_id == 131796) %>% 
+  group_by(date_time) %>% 
+  summarise(value = sum(value)) %>% 
+  ggplot(aes(x = date_time, y = value)) +
+  geom_line(alpha = .33) +
+  geom_point(alpha = .33) +
+  theme_light() +
+  labs(y = "Traffic counts", x = "")
+```
+
+Daily totals 
+
+```{r}
+counts_select %>% 
+  filter(site_id == 131796) %>% 
+  group_by(date) %>% 
+  summarise(value = sum(value)) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_col() +
+  theme_light() +
+  labs(y = "Traffic counts", x = "")
+```
+
+By `traffic_class_code`, two weeks of data 
+
+```{r}
+counts_select %>% 
+  filter(site_id == 131796) %>% 
+  filter(date >= date("2018-01-01") & date <= date("2018-01-13")) %>% 
+  group_by(date_time, traffic_class_code) %>% 
+  summarise(value = sum(value)) %>% 
+  ggplot(aes(x = date_time, y = value, group = traffic_class_code, colour = traffic_class_code)) +
+  geom_line() +
+  geom_point(alpha = .33) +
+  theme_light() +
+  labs(y = "Traffic counts", x = "")
+```
+
+### Weekly traffic
+
+```{r out.width="400px", out.height="400px"}
+locations_geo %>% 
+  filter(site_id == 136081) %>% 
+  tm_shape() +
+  tm_dots(id = "site_id", popup.vars = c("description", "road_name", "locality", "region_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+Daily totals 
+
+```{r}
+counts_select %>% 
+  filter(site_id == 136081) %>% 
+  group_by(date) %>% 
+  summarise(value = sum(value)) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_col() +
+  theme_light() +
+  labs(y = "Traffic counts", x = "")
+```
+
+By `traffic_class_code`, four weeks of data 
+
+```{r}
+counts_select %>% 
+  filter(site_id == 136081) %>% 
+  filter(date >= date("2018-01-01") & date <= date("2018-01-31")) %>% 
+  group_by(date_time, traffic_class_code) %>% 
+  summarise(value = sum(value)) %>% 
+  ggplot(aes(x = date_time, y = value, group = traffic_class_code, colour = traffic_class_code)) +
+  geom_line() +
+  geom_point(alpha = .33) +
+  theme_light() +
+  labs(y = "Traffic counts", x = "")
+```
+
+### More unusual traffic
+
+```{r out.width="400px", out.height="400px"}
+locations_geo %>% 
+  filter(site_id == 50027) %>% 
+  tm_shape() +
+  tm_dots(id = "site_id", popup.vars = c("description", "road_name", "locality", "region_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+Daily totals 
+
+```{r}
+counts_select %>% 
+  filter(site_id == 50027) %>% 
+  group_by(date) %>% 
+  summarise(value = sum(value)) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_col() +
+  theme_light() +
+  labs(y = "Traffic counts", x = "")
+```
+
+By `traffic_class_code`, four weeks of data 
+
+### Seasonal traffic
+
+```{r out.width="400px", out.height="400px"}
+locations_geo %>% 
+  filter(site_id == 110038) %>% 
+  tm_shape() +
+  tm_dots(id = "site_id", popup.vars = c("description", "road_name", "locality", "region_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+Daily totals 
+
+```{r}
+counts_select %>% 
+  filter(site_id == 110038) %>% 
+  group_by(date) %>% 
+  summarise(value = sum(value)) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_col() +
+  theme_light() +
+  labs(y = "Traffic counts", x = "")
+```
+
