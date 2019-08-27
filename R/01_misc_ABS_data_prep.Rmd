@@ -1,0 +1,73 @@
+---
+title: "Misc ABS data preparation"
+# subtitle: 
+# author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    # css: custom.css
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
+                      fig.width=9, fig.height=7, dpi=300, out.width="900px", out.height="700px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readr, readxl, lubridate, 
+       scales, janitor, kableExtra, 
+       visdat,
+       sf, tmap, tmaptools)
+tmap_mode("view")
+```
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+# Land use
+
+Mesh block categories aggregated to SA3 using area.
+
+```{r eval=FALSE, include=FALSE}
+SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
+  filter(STE_NAME16 == "Queensland")
+
+MB_2016 <- read_csv("data/MB/MB_2016_join.csv") %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  filter(ste_name16 != "Other Territories") %>% 
+  select(-objectid, -(sa1_main16:sa2_name16), -(sa4_code16:gcc_name16), 
+         -(objectid_1:area_albers_sqkm), -(state:shape_area))
+
+MB_2016_agg <- MB_2016 %>% 
+  filter(mb_cat16 != "Water") %>% 
+  group_by(sa3_code16, mb_cat16) %>% 
+  summarize(area_cat16 = sum(areasqkm16)) %>% 
+  ungroup() %>% 
+  group_by(sa3_code16) %>% 
+  mutate(area_tot = sum(area_cat16)) %>% 
+  ungroup() %>% 
+  mutate(area_cat16 = area_cat16 / area_tot) %>% 
+  select(-area_tot)
+
+
+```
+
+```{r}
+
+
+```
