@@ -1,7 +1,7 @@
 ---
 title: "TMR data preparation"
 subtitle: Traffic counts dataset
-author: "Radoslaw Panczak"
+# author: "Radoslaw Panczak"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 mainfont: DejaVu Sans
 output: 
@@ -32,6 +32,7 @@ p_load(tidyverse, readr, readxl, lubridate,
        scales, janitor, kableExtra, 
        visdat,
        sf, tmap, tmaptools)
+
 tmap_mode("view")
 ```
 
@@ -39,34 +40,88 @@ tmap_mode("view")
 <!-- ------------------------------------------------------------ --> 
 
 ```{r eval=FALSE, include=FALSE}
+p_load(googlesheets)
+
+# gs_ls()
+
+austroads <- gs_read(gs_title("AUSTROADS_Vehicle_Classification_System"), ws = "long") %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols"))
+
+saveRDS(austroads, file = "data/TMR/Traffic_counts/clean/austroads.Rds")
+
+p_unload(googlesheets)
+```
+
+
+```{r eval=FALSE, include=FALSE}
 # impossible to knit with such large things?
 # clumsy solution to prepare aggregates for the mo
-counts_18 <- readRDS(file = "data/TMR/Traffic_counts/clean/counts_18.Rds")
-
-aggregates <- counts_18 %>%
-  filter(value != 0) %>%
-  group_by(site_id) %>%
-  summarise(n = n(), counts = sum(value),
-            min = min(value), max = max(value), range = max - min,
-            mean = mean(counts), median = median(counts)) %>%
-  arrange(desc(n)) %>%
-  ungroup()
-
-saveRDS(aggregates, file = "data/TMR/Traffic_counts/clean/aggregates.Rds")
+counts_18 <- readRDS(file = "data/TMR/Traffic_counts/clean/counts_18.Rds") %>% 
+  select(-site_stream, -hour)
 
 unique_site_id <- unique(counts_18$site_id)
+
 saveRDS(unique_site_id, file = "data/TMR/Traffic_counts/clean/unique_site_id.Rds")
 
+# austroads <- readRDS(file = "data/TMR/Traffic_counts/clean/austroads.Rds") %>% 
+#     rename(traffic_class_code = code)
+
+# # checking if multiple vehicle clasifications exist per site
+# site_class <- as.data.frame(table(counts_18$site_id, counts_18$traffic_class_code)) %>% 
+#   rename(site_id = Var1,
+#          traffic_class_code = Var2) %>% 
+#   arrange(site_id, traffic_class_code) %>% 
+#   left_join(austroads) %>% 
+#   filter(Freq > 0) %>% 
+#   group_by(site_id, type) %>% 
+#   filter(row_number() == 1) %>% 
+#   group_by(site_id) %>% 
+#   summarize(Ncats = n()) %>% 
+#   filter(Ncats > 1)
+
+# # example of site with two different classifications used
+# counts_select <- counts_18 %>%
+#   filter(site_id %in% c(10014)) %>% 
+#   filter(date_time == ymd_hms("2018-12-31 21:00:00") | date_time == ymd_hms("2018-09-28 00:00:00")) %>% 
+#   left_join(austroads)
+
+aggregates_date_time <- counts_18 %>%
+  filter(value != 0) %>%
+  group_by(site_id, date_time) %>%
+  summarise(n = n(), counts = sum(value)) %>%
+  ungroup()
+
+saveRDS(aggregates_date_time, file = "data/TMR/Traffic_counts/clean/aggregates_date_time.Rds")
+
 counts_select <- counts_18 %>%
-  filter(site_id %in% c(131796, 136081, 50027, 110038))
+  filter(site_id %in% c(30041, 10014, 131796, 136081, 50027, 110038))
+
 saveRDS(counts_select, file = "data/TMR/Traffic_counts/clean/counts_select.Rds")
+
+counts_problem <- counts_18 %>%
+  filter(site_id %in% c(11726, 12168, 120939, 121148))
+
+saveRDS(counts_problem, file = "data/TMR/Traffic_counts/clean/counts_problem.Rds")
 ```
+
+```{r}
+# aggregates from hpc
+site_class <- readRDS(file = "data/TMR/Traffic_counts/clean/site_class.Rds") %>% 
+  filter(Ncats > 1)
+
+site_class_date_time <- readRDS(file = "data/TMR/Traffic_counts/clean/site_class_date_time.Rds") %>% 
+  filter(Ncats > 1)
+
+unique(site_class_date_time$site_id)
+```
+
 
 ```{r}
 SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
   filter(STE_NAME16 == "Queensland")
 
-aggregates <- readRDS(file = "data/TMR/Traffic_counts/clean/aggregates.Rds")
+aggregates_date_time <- readRDS(file = "data/TMR/Traffic_counts/clean/aggregates_date_time.Rds")
 
 unique_site_id <- readRDS(file = "data/TMR/Traffic_counts/clean/unique_site_id.Rds")
 
@@ -86,6 +141,8 @@ locations <- read_xlsx("data/TMR/Traffic_counts/raw/TMR Sites as at August 2019.
 locations_clean <- locations %>% 
   # filter(site_id %in% unique(counts_18$site_id))
   filter(site_id %in% unique_site_id)
+
+rm(unique_site_id)
 ```
 
 There are `r comma(nrow(locations))` listed in `TMR Sites as at August 2019.xlsx` file. `r comma(nrow(locations_clean))` of them have any data in `TMR Traffic Counts 2018.txt` file. 
@@ -120,7 +177,6 @@ locations_geo <- locations_clean %>%
   st_as_sf(coords = c("longitude", "latitude"), crs = 4283, agr = "constant")
 
 rm(locations_clean)
-locations_geo <- left_join(locations_geo, aggregates)
 gc()
 ```
 
@@ -129,7 +185,7 @@ gc()
 ```{r message=FALSE}
 locations_geo %>% 
   tm_shape() + 
-  tm_markers()
+  tm_dots()
 ```
 
 # Traffic Counts 2018 
@@ -139,37 +195,120 @@ locations_geo %>%
 # `r comma(nrow_counts_18_above_zero)` of those records have vlaues > 0.
 ```
 
-## Number of data points 
-
-Sites vary by number of data points:
+## Time coverage 
 
 ```{r}
-ggplot(aggregates, aes(n)) +
-  geom_histogram(binwidth = 10000) +
+coverage <- aggregates_date_time %>%
+  group_by(site_id) %>%
+  summarise(numerator = n(), 
+            mean = mean(counts), median = median(counts),
+            min = min(counts), max = max(counts), range = max - min,
+            counts = sum(counts)) %>%
+  ungroup() %>% 
+  mutate(coverage = (numerator / length(unique(aggregates_date_time$date_time))) *100) %>% 
+  select(site_id, coverage)
+```
+
+Sites vary by number of days covered during the year:
+
+```{r}
+ggplot(coverage, aes(coverage)) +
+  geom_histogram(binwidth = 10) +
   theme_light() +
-  labs(y = "Number of locations", x = "Number of data points",
-       caption = "Bar width = 10,000")
+  labs(y = "Number of locations", x = "% of days with data during the year")
 ```
 
+Spatial view:
+
 ```{r}
+locations_geo <- left_join(locations_geo, coverage)
+
 locations_geo %>% 
   tm_shape() +
-  tm_dots(size = "n", col = "n", palette = "RdYlGn", n = 7, 
+  tm_dots(col = "coverage", palette = "RdYlGn", n = 10, 
           id = "site_id", popup.vars = c("description", "road_name")) + 
   tm_shape(SA3) +
   tm_borders()
 ```
 
-## Median site traffic
+Sites with 80% data coverage:
+
+```{r eval=FALSE, include=FALSE}
+locations_geo %>% 
+  filter(coverage >= 80) %>% 
+  tm_shape() +
+  tm_dots(id = "site_id", popup.vars = c("description", "road_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+## Maximum site traffic
+
+Max from hourly counts from all data collecion points (ie. ever recorded)
+
+```{r}
+aggregates <- aggregates_date_time %>%
+  group_by(site_id) %>%
+  summarise(mean = mean(counts), median = median(counts),
+            min = min(counts), max = max(counts), range = max - min,
+            counts = sum(counts)) %>%
+  ungroup() 
+
+locations_geo <- left_join(locations_geo, aggregates)
+```
+
 
 ```{r}
 locations_geo %>% 
   tm_shape() +
-  tm_dots(size = "median", col = "median", palette = "YlOrRd", n = 7, 
+  tm_dots(size = "max", col = "max", palette = "YlOrRd", n = 7, 
           id = "site_id", popup.vars = c("description", "road_name")) + 
   tm_shape(SA3) +
   tm_borders()
 ```
+
+Sites with 80% data coverage:
+
+```{r}
+locations_geo %>% 
+  filter(coverage >= 80) %>% 
+  tm_shape() +
+  tm_dots(size = "max", col = "max", palette = "YlOrRd", n = 7, 
+          id = "site_id", popup.vars = c("description", "road_name")) + 
+  tm_shape(SA3) +
+  tm_borders()
+```
+
+## Temporal trajectories of daily counts
+
+January, sites with 80% data coverage:
+
+
+```{r}
+temp <- aggregates_date_time %>% 
+  mutate(date = date(date_time)) %>% 
+  group_by(site_id, date) %>% 
+  summarise(counts = sum(counts, na.rm = TRUE))
+
+expanded <- aggregates_date_time %>% 
+  mutate(date = date(date_time)) %>% 
+  expand(site_id, date) %>% 
+  left_join(temp) %>% 
+  left_join(coverage)
+
+rm(temp)
+
+expanded %>% 
+  # filter(site_id %in% c(20071, 20268)) %>%
+  filter(coverage >= 80) %>%
+  filter(date <= ymd("2018-01-31")) %>%
+  ggplot(aes(x = date, y = counts, group = site_id)) + 
+  geom_line(colour = "darkorchid4", alpha = .33)  +
+  # geom_line()  +
+  theme_light() +
+  labs(y = "Counts of vehicles", x = "")
+```
+
 
 ## Selected sites
 
