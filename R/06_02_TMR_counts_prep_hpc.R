@@ -28,8 +28,10 @@ site_class <- counts_18 %>%
   left_join(austroads) %>% 
   group_by(site_id, type) %>% 
   filter(row_number() == 1) %>% 
+  ungroup() %>% 
   group_by(site_id) %>% 
-  summarize(Ncats = n())
+  summarize(Ncats = n()) %>% 
+  ungroup()
 
 saveRDS(site_class, file = "/90days/uqrpancz/TMR/site_class.Rds")
 
@@ -39,7 +41,9 @@ site_class_date_time <- counts_18 %>%
   left_join(austroads) %>% 
   group_by(site_id, date_time, type) %>% 
   filter(row_number() == 1) %>% 
+  ungroup() %>% 
   group_by(site_id, date_time) %>% 
-  summarize(Ncats = n())
+  summarize(Ncats = n()) %>% 
+  ungroup()
 
 saveRDS(site_class_date_time, file = "/90days/uqrpancz/TMR/site_class_date_time.Rds")
