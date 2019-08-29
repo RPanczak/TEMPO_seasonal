@@ -34,7 +34,10 @@ p_load(tidyverse, readr, readxl, lubridate,
        sf, tmap, tmaptools)
 tmap_mode("view")
 
-SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds")
+SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
+  mutate(SA3_CODE16 = as.numeric(SA3_CODE16)) %>% 
+  rename(sa3_code16 = SA3_CODE16) %>% 
+  select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
 ```
 
 <!-- ------------------------------------------------------------ --> 
@@ -74,9 +77,13 @@ MB_2016_agg_wide <- MB_2016_agg %>%
 
 ## Clustering 
 
-```{r eval=FALSE, include=FALSE}
-p_load(cluster, factoextra, NbClust, clValid)
+### kmeans
 
+```{r}
+p_load(cluster, factoextra, NbClust, clValid)
+```
+
+```{r eval=FALSE, include=FALSE}
 res.dist <- get_dist(MB_2016_agg_wide, stand = TRUE, method = "pearson")
 
 fviz_dist(res.dist, 
@@ -84,11 +91,11 @@ fviz_dist(res.dist,
 ```
 
 ```{r eval=FALSE, include=FALSE}
+fviz_nbclust(MB_2016_agg_wide, kmeans, k.max = 20, method = "silhouette")
+fviz_nbclust(MB_2016_agg_wide, kmeans, k.max = 20, method = "wss")
 fviz_nbclust(MB_2016_agg_wide, kmeans, k.max = 20, method = "gap_stat")
-```
 
-```{r}
-km.res <- kmeans(MB_2016_agg_wide, 10, nstart = 25)
+km.res <- kmeans(MB_2016_agg_wide, 9, nstart = 25)
 ```
 
 ```{r}
@@ -97,36 +104,59 @@ fviz_cluster(km.res, data = MB_2016_agg_wide, frame.type = "convex") +
 ```
 
 ```{r}
-pam.res <- pam(MB_2016_agg_wide, 10)
+MB_2016_agg_wide <- MB_2016_agg %>% 
+  spread(mb_cat16, area_cat16) %>% 
+  replace(is.na(.), 0)
+
+MB_2016_agg_wide$cluster <- km.res$cluster
+
+SA3 <- left_join(SA3, select(MB_2016_agg_wide, sa3_code16, cluster))
+
+SA3 %>% 
+  # filter(cluster == 9) %>% 
+  tm_shape() +
+  tm_polygons("cluster", palette = "Accent", style = "cat", n = 9,
+              title = "Clusters", id = "SA3_NAME16")
+
+temp <- MB_2016_agg_wide %>% 
+  gather(Commercial:Transport, key = "key", value = "value")
+
+temp %>% 
+  ggplot(aes(x = key, value)) + 
+  geom_boxplot(varwidth = TRUE) +
+  facet_wrap(~cluster) +
+  coord_flip() + 
+  theme_light()
+
+```
+
+
+### other
+
+```{r}
+MB_2016_agg_wide <- MB_2016_agg %>% 
+  spread(mb_cat16, area_cat16) %>% 
+  replace(is.na(.), 0) %>% 
+  select(-sa3_code16) %>% 
+  scale()
+
+pam.res <- pam(MB_2016_agg_wide, 9)
 
 fviz_cluster(pam.res) +
   theme_minimal()
 ```
 
-```{r}
-# Compute dissimilarity matrix
-d <- dist(MB_2016_agg_wide, method = "euclidean")
-
-# Hierarchical clustering using Ward's method
-res.hc <- hclust(d, method = "ward.D2" )
-
-# Cut tree into 4 groups
-grp <- cutree(res.hc, k = 10)
-
-# Visualize
-plot(res.hc, cex = 0.6) # plot tree
-rect.hclust(res.hc, k = 10, border = 2:5) # add rectangle
-```
 
 ```{r}
-res <- hcut(MB_2016_agg_wide, k = 10, stand = TRUE)
+# hc_method = "ward.D2"
+res <- hcut(MB_2016_agg_wide, k = 9, stand = TRUE)
 
 fviz_dend(res, rect = TRUE, cex = 0.5, k_colors = c("#00AFBB","#2E9FDF", "#E7B800", "#FC4E07"))
 ```
 
 ```{r}
 res.nbclust <- NbClust(data = MB_2016_agg_wide, distance = "euclidean",
-                       min.nc = 2, max.nc = 10, 
+                       min.nc = 2, max.nc = 20, 
                        method = "complete", index ="all") 
 
 factoextra::fviz_nbclust(res.nbclust) + 
@@ -134,12 +164,12 @@ factoextra::fviz_nbclust(res.nbclust) +
 ```
 
 ```{r}
-res.hc <- eclust(MB_2016_agg_wide, "hclust", k = 10, graph = FALSE) 
+res.hc <- eclust(MB_2016_agg_wide, "hclust", k = 9, graph = FALSE) 
 fviz_silhouette(res.hc)
 ```
 
 ```{r}
-intern <- clValid(MB_2016_agg_wide, nClust = 2:10, 
+intern <- clValid(MB_2016_agg_wide, nClust = 2:20, 
                   clMethods = c("hierarchical","kmeans","pam"),
                   validation = "internal")
 # Summary
@@ -148,31 +178,31 @@ summary(intern)
 p_unload(cluster, factoextra, NbClust, clValid)
 ```
 
-## Mclust
+### Mclust
 
 ```{r}
 p_load(mclust)
 
-BIC <- mclustBIC(MB_2016_agg_wide)
+BIC <- mclustBIC(MB_2016_agg_wide, G=1:20)
 plot(BIC)
 summary(BIC)
 
 p_unload(mclust)
 ```
 
-## VarSelLCM
+### VarSelLCM
 
 ```{r}
 p_load(VarSelLCM)
 
 # Cluster analysis without variable selection
-res_without <- VarSelCluster(MB_2016_agg_wide, gvals = 1:10, vbleSelec = FALSE, crit.varsel = "BIC")
+res_without <- VarSelCluster(MB_2016_agg_wide, gvals = 1:20, vbleSelec = FALSE, crit.varsel = "BIC")
 
 summary(res_without)
 plot(res_without)
 
 # Cluster analysis with variable selection (with parallelisation)
-res_with <- VarSelCluster(MB_2016_agg_wide, gvals = 1:10, nbcores = 8, crit.varsel = "BIC")
+res_with <- VarSelCluster(MB_2016_agg_wide, gvals = 1:20, nbcores = 8, crit.varsel = "BIC")
 
 summary(res_with)
 print(res_with)
@@ -193,7 +223,6 @@ plot(x = res_with, y = "Other")
 
 plot(res_with, y = "Commercial", type = "cdf")
 
-p_unload(VarSelLCM)
 
 temp <- MB_2016_agg %>% 
   spread(mb_cat16, area_cat16) %>% 
@@ -201,17 +230,15 @@ temp <- MB_2016_agg %>%
 
 temp$cluster <- fitted(res_with)
 
-SA3 <- SA3 %>% 
-  mutate(SA3_CODE16 = as.numeric(SA3_CODE16)) %>% 
-  rename(sa3_code16 = SA3_CODE16)
+SA3$cluster <- NULL
 
 SA3 <- left_join(SA3, select(temp, sa3_code16, cluster))
 
-qtm(SA3, fill = "cluster", n = 5, fill.palette = "Accent")
+table(SA3$cluster)
 
 tm_shape(SA3) +
-	tm_polygons("cluster", palette="Accent", style="cat", n=5,
-		title="Clusters", id="SA3_NAME16")
+  tm_polygons("cluster", palette="Accent", style="cat", n=5,
+              title="Clusters", id="SA3_NAME16")
 
 temp <- temp %>% 
   gather(Commercial:Transport, key = "key", value = "value")
@@ -222,6 +249,8 @@ temp %>%
   facet_wrap(~cluster) +
   coord_flip() + 
   theme_light()
+
+p_unload(VarSelLCM)
 
 ```
 
