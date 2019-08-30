@@ -29,7 +29,7 @@ set.seed(12345)
 library(pacman) 
 p_load(tidyverse, magrittr, readr, readxl, lubridate, 
        scales, janitor, kableExtra, 
-       visdat,
+       visdat, mvtsplot, 
        sf, tmap, tmaptools)
 tmap_mode("view")
 ```
@@ -175,6 +175,24 @@ temp %>%
 
 ```
 
+```{r eval=FALSE, include=FALSE}
+destination %>% 
+  filter(stopover_reason %in% c("Holiday")) %>% 
+  ggplot(aes(x = month, y = visitor_nights, group = SA3_CODE16)) + 
+  geom_line() +
+  theme_light() +
+  labs(x = "", y = "Median GN", colour = "Stopover reason")
+```
+
+```{r eval=FALSE, include=FALSE}
+temp <- destination %>% 
+  filter(stopover_reason %in% c("Holiday")) %>%
+  select(SA3_NAME16, month, visitor_nights) %>% 
+  spread(SA3_NAME16, visitor_nights)
+
+mvtsplot(temp, norm = "global")
+```
+
 <!-- ------------------------------------------------------------ --> 
 
 # OD relationship
@@ -184,8 +202,8 @@ temp %>%
 ```{r}
 max <- max(max(origin$visitor_nights), max(destination$visitor_nights))
 
-rename(origin, origin =  visitor_nights) %>% 
-  left_join(rename(destination, destination =  visitor_nights)) %>% 
+rename(origin, origin = visitor_nights) %>% 
+  left_join(rename(destination, destination = visitor_nights)) %>% 
   filter(stopover_reason == "Holiday") %>% 
   ggplot(aes(x = origin, y = destination)) +
   geom_line(aes(x = destination, y = destination), colour = "darkorchid4", size = 1) +
