@@ -16,7 +16,6 @@ output:
 ---
 
 <!-- ------------------------------------------------------------ --> 
-<!-- ------------------------------------------------------------ --> 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
@@ -46,9 +45,10 @@ SA2 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA2_2016_AUST_clean.rds") 
 ```
 
 <!-- ------------------------------------------------------------ --> 
-<!-- ------------------------------------------------------------ --> 
 
-# Origins
+# Data
+
+## Origins
 
 Using data from `Home SA2, Month returned from trip and Stopover reason by Nights (000).csv`
 
@@ -57,12 +57,12 @@ Removed observations with region codes like: `Not asked`, `Offshore and Migrator
 `SA3`s from Other Teritories were removed. 
 
 ```{r include=FALSE}
-origin <- read_csv("data/NVS/raw/Home SA2, Month returned from trip and Stopover reason by Nights (000).csv", skip = 11) %>% 
+origin <- read_csv("data/NVS/raw/Home SA2, Month returned from trip and Stopover reason by Nights (000).zip", skip = 11) %>% 
   clean_names() %>%
   remove_empty(c("rows", "cols")) %>% 
   rename(SA2_NAME16 = home_state_region_sa2,
          month = month_returned_from_trip,
-         origin_visitor_nights = x4) %>% 
+         visitor_nights = x4) %>% 
   mutate(month = factor(month, levels = month.name)) %>% 
   fill(SA2_NAME16, month) %>% 
   filter(SA2_NAME16 != "Total") %>% 
@@ -71,12 +71,12 @@ origin <- read_csv("data/NVS/raw/Home SA2, Month returned from trip and Stopover
   filter(! grepl('Unknown Region', SA2_NAME16)) %>% 
   filter(! grepl('Unknown SA2', SA2_NAME16)) %>% 
   filter(! grepl('Transit ', SA2_NAME16)) 
-  
+
 temp <- origin %>% 
   left_join(SA2) %>% 
   filter(is.na(SA3_CODE16)) %>% 
   group_by(SA2_NAME16) %>% 
-  summarise(total = sum(origin_visitor_nights, na.rm = TRUE))
+  summarise(total = sum(visitor_nights, na.rm = TRUE))
 
 origin %<>% 
   left_join(SA2) %>% 
@@ -84,7 +84,8 @@ origin %<>%
   filter(! SA3_NAME16 %in% c("Christmas Island", "Cocos (Keeling) Islands", 
                              "Jervis Bay", "Norfolk Island")) %>% 
   group_by(SA3_CODE16, SA3_NAME16, stopover_reason, month) %>% 
-  summarise(origin_visitor_nights = sum(origin_visitor_nights))
+  summarise(visitor_nights = sum(visitor_nights)) %>% 
+  ungroup()
 ```
 
 There are `r comma(nrow(temp))` locations that do not link to the full list of `SA2_NAME16` codes form ABS. All of them have `nfd` suffix in the name and most have `0` visitors throught the year so most likely these are obsolete codes. These observations have been removed.
@@ -98,7 +99,7 @@ Median values of guest nights per month per reason:
 ```{r}
 temp <- origin %>% 
   group_by(stopover_reason, month) %>% 
-  summarize(median = median(origin_visitor_nights))
+  summarize(median = median(visitor_nights))
 
 temp %>% 
   filter(! stopover_reason %in% c("No other reason", "Not stated/not asked",
@@ -106,10 +107,11 @@ temp %>%
   ggplot(aes(x = month, y = median, group = stopover_reason, colour = stopover_reason)) + 
   geom_line() +
   theme_light() +
+  scale_y_continuous(limits = c(0, 60)) +
   labs(x = "", y = "Median GN", colour = "Stopover reason")
 ```
 
-# Destinations
+## Destinations
 
 Using data from `Stopover SA2, Month returned from trip and Stopover reason by Nights (000).csv`
 
@@ -118,12 +120,12 @@ Removed observations with region codes like: `Not asked`, `Offshore and Migrator
 `SA3`s from Other Teritories were removed. 
 
 ```{r include=FALSE}
-destination <- read_csv("data/NVS/raw/Stopover SA2, Month returned from trip and Stopover reason by Nights (000).csv", skip = 11) %>% 
+destination <- read_csv("data/NVS/raw/Stopover SA2, Month returned from trip and Stopover reason by Nights (000).zip", skip = 11) %>% 
   clean_names() %>%
   remove_empty(c("rows", "cols")) %>% 
   rename(SA2_NAME16 = stopover_state_region_sa2,
          month = month_returned_from_trip,
-         destination_visitor_nights = x4) %>% 
+         visitor_nights = x4) %>% 
   mutate(month = factor(month, levels = month.name)) %>% 
   fill(SA2_NAME16, month) %>% 
   filter(SA2_NAME16 != "Total") %>% 
@@ -132,12 +134,12 @@ destination <- read_csv("data/NVS/raw/Stopover SA2, Month returned from trip and
   filter(! grepl('Unknown Region', SA2_NAME16)) %>% 
   filter(! grepl('Unknown SA2', SA2_NAME16)) %>% 
   filter(! grepl('Transit ', SA2_NAME16)) 
-  
+
 temp <- destination %>% 
   left_join(SA2) %>% 
   filter(is.na(SA3_CODE16)) %>% 
   group_by(SA2_NAME16) %>% 
-  summarise(total = sum(destination_visitor_nights, na.rm = TRUE))
+  summarise(total = sum(visitor_nights, na.rm = TRUE))
 
 destination %<>% 
   left_join(SA2) %>% 
@@ -145,10 +147,11 @@ destination %<>%
   filter(! SA3_NAME16 %in% c("Christmas Island", "Cocos (Keeling) Islands", 
                              "Jervis Bay", "Norfolk Island")) %>% 
   group_by(SA3_CODE16, SA3_NAME16, stopover_reason, month) %>% 
-  summarise(destination_visitor_nights = sum(destination_visitor_nights))
+  summarise(visitor_nights = sum(visitor_nights)) %>% 
+  ungroup()
 ```
 
-There are `r comma(nrow(temp))` locations that do not link to the full list of `SA2_NAME16` codes form ABS. All of them have `nfd` suffix in the name and most have `0` visitors throught the year so most likely these are obsolete codes. These observations have been removed.
+Again, there are `r comma(nrow(temp))` locations that do not link to the full list of `SA2_NAME16` codes form ABS. All of them have `nfd` suffix in the name and most have `0` visitors throught the year so most likely these are obsolete codes. These observations have been removed.
 
 ```{r}
 slice(temp)
@@ -159,16 +162,88 @@ Median values of guest nights per month per reason:
 ```{r}
 temp <- destination %>% 
   group_by(stopover_reason, month) %>% 
-  summarize(median = median(destination_visitor_nights))
+  summarize(median = median(visitor_nights))
 
 temp %>% 
   filter(! stopover_reason %in% c("No other reason", "Not stated/not asked",
                                   "In transit", "Other reason")) %>% 
   ggplot(aes(x = month, y = median, group = stopover_reason, colour = stopover_reason)) + 
   geom_line() +
+  scale_y_continuous(limits = c(0, 60)) +
   theme_light() +
   labs(x = "", y = "Median GN", colour = "Stopover reason")
 
 ```
 
+<!-- ------------------------------------------------------------ --> 
 
+# OD relationship
+
+## Reason: holidays
+
+```{r}
+max <- max(max(origin$visitor_nights), max(destination$visitor_nights))
+
+rename(origin, origin =  visitor_nights) %>% 
+  left_join(rename(destination, destination =  visitor_nights)) %>% 
+  filter(stopover_reason == "Holiday") %>% 
+  ggplot(aes(x = origin, y = destination)) +
+  geom_line(aes(x = destination, y = destination), colour = "darkorchid4", size = 1) +
+  geom_point() +
+  theme_light() +
+  facet_wrap(vars(month)) +
+  coord_fixed(xlim = c(0, max), ylim = c(0, max)) +
+  labs(x = "GN origin", y = "GN destination", colour = "Stopover reason")
+```
+
+## Reason: business
+
+```{r}
+max <- max(max(origin$visitor_nights), max(destination$visitor_nights))
+
+rename(origin, origin =  visitor_nights) %>% 
+  left_join(rename(destination, destination =  visitor_nights)) %>% 
+  filter(stopover_reason == "Business") %>% 
+  ggplot(aes(x = origin, y = destination)) +
+  geom_line(aes(x = destination, y = destination), colour = "darkorchid4", size = 1) +
+  geom_point() +
+  theme_light() +
+  facet_wrap(vars(month)) +
+  coord_fixed(xlim = c(0, max), ylim = c(0, max)) +
+  labs(x = "GN origin", y = "GN destination", colour = "Stopover reason")
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Net
+
+```{r}
+SA3_net <- SA3 %>% 
+  left_join(
+    rename(origin, origin =  visitor_nights) %>% 
+      left_join(rename(destination, destination =  visitor_nights)) %>% 
+      mutate(net = origin - destination) %>% 
+      select(-origin, -destination))
+```
+
+## Jan vs. May, reason: holidays
+
+```{r}
+SA3_net %>% 
+  filter(stopover_reason == "Holiday") %>% 
+  filter(month %in% c("January", "May")) %>% 
+  tm_shape() +
+  tm_polygons("net", n = 7, palette = "RdYlBu") +
+  tm_facets(by = "month")
+```
+
+## Jan vs. May, reason: business
+
+```{r}
+SA3_net %>% 
+  filter(stopover_reason == "Business") %>% 
+  filter(month %in% c("January", "May")) %>% 
+  tm_shape() +
+  tm_polygons("net", n = 7, palette = "RdYlBu") +
+  tm_facets(by = "month")
+```
