@@ -34,6 +34,7 @@ p_load(tidyverse, magrittr, readr, readxl, lubridate,
 tmap_mode("view")
 ```
 
+
 ```{r}
 SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
   select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
@@ -50,13 +51,20 @@ SA3_centr %>%
   st_drop_geometry() %>% 
   write_csv("data/NVS/clean/locations.csv", col_names = FALSE)
 
+SA3_centr_wm <- SA3_centr %>% 
+  select(-lat, -lon, -SA3_NAME16) %>%
+  st_transform(3857) %>% 
+  cbind(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
+  rename(lon = X, lat = Y)
+
+SA3_centr_wm <- SA3_centr %>% 
+  st_drop_geometry() 
 ```
 
 <!-- ------------------------------------------------------------ --> 
 
-# Data
-
-## Origins
+# Origins
 
 Using data from `Home SA2, Month returned from trip and Stopover reason by Nights (000).csv`
 
@@ -119,7 +127,9 @@ temp %>%
   labs(x = "", y = "Median GN", colour = "Stopover reason")
 ```
 
-## Destinations
+<!-- ------------------------------------------------------------ --> 
+
+# Destinations
 
 Using data from `Stopover SA2, Month returned from trip and Stopover reason by Nights (000).csv`
 
@@ -201,9 +211,51 @@ temp <- destination %>%
 mvtsplot(temp, norm = "global")
 ```
 
-## Flows
+<!-- ------------------------------------------------------------ --> 
+
+# OD relationship
+
+## Reason: holidays
+
+```{r}
+max <- max(max(origin$visitor_nights), max(destination$visitor_nights))
+
+rename(origin, origin = visitor_nights) %>% 
+  left_join(rename(destination, destination = visitor_nights)) %>% 
+  filter(stopover_reason == "Holiday") %>% 
+  ggplot(aes(x = origin, y = destination)) +
+  geom_line(aes(x = destination, y = destination), colour = "darkorchid4", size = 1) +
+  geom_point() +
+  theme_light() +
+  facet_wrap(vars(month)) +
+  coord_fixed(xlim = c(0, max), ylim = c(0, max)) +
+  labs(x = "GN origin", y = "GN destination", colour = "Stopover reason")
+```
+
+## Reason: business
+
+```{r}
+max <- max(max(origin$visitor_nights), max(destination$visitor_nights))
+
+rename(origin, origin =  visitor_nights) %>% 
+  left_join(rename(destination, destination =  visitor_nights)) %>% 
+  filter(stopover_reason == "Business") %>% 
+  ggplot(aes(x = origin, y = destination)) +
+  geom_line(aes(x = destination, y = destination), colour = "darkorchid4", size = 1) +
+  geom_point() +
+  theme_light() +
+  facet_wrap(vars(month)) +
+  coord_fixed(xlim = c(0, max), ylim = c(0, max)) +
+  labs(x = "GN origin", y = "GN destination", colour = "Stopover reason")
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Flows
 
 SA3 level OD matrices constructed from SA2 data. Ignoring reason for travel.
+
+## Directional 
 
 ### January 
 
@@ -258,6 +310,7 @@ stopifnot(nrow(OD_01 %>% filter(SA3_CODE16_ORIG == SA3_CODE16_DEST)) == nrow(SA3
 
 OD_01 %>% 
   select(SA3_CODE16_ORIG, SA3_CODE16_DEST, visitor_nights) %>% 
+  filter(SA3_CODE16_ORIG != SA3_CODE16_DEST) %>% 
   filter(visitor_nights > 0) %>% 
   write_csv("data/NVS/clean/flows_jan.csv", col_names = FALSE)
 
@@ -320,6 +373,7 @@ stopifnot(nrow(OD_08 %>% filter(SA3_CODE16_ORIG == SA3_CODE16_DEST)) == nrow(SA3
 
 OD_08 %>% 
   select(SA3_CODE16_ORIG, SA3_CODE16_DEST, visitor_nights) %>% 
+  filter(SA3_CODE16_ORIG != SA3_CODE16_DEST) %>% 
   filter(visitor_nights > 0) %>% 
   write_csv("data/NVS/clean/flows_aug.csv", col_names = FALSE)
 
@@ -329,44 +383,62 @@ OD_08 %>%
 
 [Interactive version](https://flowmap.blue/1Zltkg5IfjJflkpzZhgWgPGTGIAk8OdSXE7b0i09KYyM)
 
-
-<!-- ------------------------------------------------------------ --> 
-
-# OD relationship
-
-## Reason: holidays
+## Ignoring direction
 
 ```{r}
-max <- max(max(origin$visitor_nights), max(destination$visitor_nights))
-
-rename(origin, origin = visitor_nights) %>% 
-  left_join(rename(destination, destination = visitor_nights)) %>% 
-  filter(stopover_reason == "Holiday") %>% 
-  ggplot(aes(x = origin, y = destination)) +
-  geom_line(aes(x = destination, y = destination), colour = "darkorchid4", size = 1) +
-  geom_point() +
-  theme_light() +
-  facet_wrap(vars(month)) +
-  coord_fixed(xlim = c(0, max), ylim = c(0, max)) +
-  labs(x = "GN origin", y = "GN destination", colour = "Stopover reason")
+p_load(mapdeck)
+key <- readr::read_file("mapbox.txt")
+set_token(key)
 ```
 
-## Reason: business
+### mapdeck 
+
+```{r include=FALSE}
+OD_01_bd <- 
+  OD_01 %>% 
+  select(-date) %>% 
+  filter(SA3_CODE16_ORIG != SA3_CODE16_DEST) %>% 
+  rowwise() %>% 
+  mutate(id = paste(min(SA3_CODE16_ORIG, SA3_CODE16_DEST),
+                    max(SA3_CODE16_DEST, SA3_CODE16_ORIG), sep = "-")) %>% 
+  group_by(id) %>% 
+  mutate(visitor_nights_bd = sum(visitor_nights) / 10) %>% 
+  arrange(id, SA3_CODE16_DEST) %>% 
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  select(-visitor_nights, -id) %>% 
+  left_join(SA3_centr_wm, by = c("SA3_CODE16_ORIG" = "SA3_CODE16")) %>% 
+  rename(start_lon = lon, start_lat = lat) %>% 
+  left_join(SA3_centr_wm, by = c("SA3_CODE16_DEST" = "SA3_CODE16")) %>% 
+  rename(end_lon = lon, end_lat = lat) %>% 
+  mutate(info = paste0("<b>",SA3_NAME16_ORIG, " <-> ", SA3_NAME16_DEST, "</b>")) %>% 
+  select(-SA3_NAME16.x, -SA3_NAME16.y) %>% 
+  as.data.frame()
+
+write_csv(OD_01_bd, "data/NVS/clean/kepler_jan.csv")
+
+```
 
 ```{r}
-max <- max(max(origin$visitor_nights), max(destination$visitor_nights))
-
-rename(origin, origin =  visitor_nights) %>% 
-  left_join(rename(destination, destination =  visitor_nights)) %>% 
-  filter(stopover_reason == "Business") %>% 
-  ggplot(aes(x = origin, y = destination)) +
-  geom_line(aes(x = destination, y = destination), colour = "darkorchid4", size = 1) +
-  geom_point() +
-  theme_light() +
-  facet_wrap(vars(month)) +
-  coord_fixed(xlim = c(0, max), ylim = c(0, max)) +
-  labs(x = "GN origin", y = "GN destination", colour = "Stopover reason")
+mapdeck(token = key, 
+        style = mapdeck_style('dark')) %>%
+  add_arc(
+    data = OD_01_bd
+    , origin = c("start_lon", "start_lat")
+    , destination = c("end_lon", "end_lat")
+    , stroke_from = "SA3_CODE16_ORIG"
+    , stroke_to = "SA3_CODE16_DEST"
+    , tooltip = "info"
+    , layer_id = "arclayer"
+    # , legend = TRUE
+    , stroke_width = "visitor_nights_bd"
+  )
 ```
+
+### kepler
+
+[Map](kepler.gl.nvs.jan.html)
+
 
 <!-- ------------------------------------------------------------ --> 
 
