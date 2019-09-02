@@ -29,7 +29,7 @@ set.seed(12345)
 library(pacman) 
 p_load(tidyverse, magrittr, readr, readxl, lubridate, 
        scales, janitor, kableExtra, 
-       visdat, mvtsplot, 
+       visdat, mvtsplot,  
        sf, tmap, tmaptools)
 tmap_mode("view")
 ```
@@ -38,9 +38,17 @@ tmap_mode("view")
 SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
   select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
 
+SA3_centr <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_centr.rds") %>% 
+  left_join(select(st_drop_geometry(SA3), SA3_CODE16, SA3_NAME16)) %>% 
+  select(SA3_CODE16, SA3_NAME16, lat, lon)
+
 SA2 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA2_2016_AUST_clean.rds") %>% 
   st_drop_geometry() %>% 
   select(SA2_MAIN16, SA2_NAME16, SA3_CODE16, SA3_NAME16)
+
+SA3_centr %>% 
+  st_drop_geometry() %>% 
+  write_csv("data/NVS/clean/locations.csv", col_names = FALSE)
 
 ```
 
@@ -193,6 +201,135 @@ temp <- destination %>%
 mvtsplot(temp, norm = "global")
 ```
 
+## Flows
+
+SA3 level OD matrices constructed from SA2 data. Ignoring reason for travel.
+
+### January 
+
+```{r include=FALSE}
+OD_01 <- read_csv("data/NVS/raw/OD_SA2_all_2018-01.zip", skip = 11) %>% 
+  remove_empty(c("rows", "cols")) %>% 
+  rename(SA2_ORIG = `Stopover state/region/SA2`) %>% 
+  filter(SA2_ORIG != "Home State/Region/SA2") %>% 
+  filter(SA2_ORIG != "(c) Copyright Space-Time Research 2013") %>% 
+  gather(`Baulkham Hills (East)`:Total, key = SA2_DEST, value = visitor_nights) %>% 
+  filter(! SA2_ORIG %in% c("Not asked", "Total")) %>% 
+  filter(! grepl('Offshore and Migratory', SA2_ORIG)) %>% 
+  filter(! grepl('Unknown Region', SA2_ORIG)) %>% 
+  filter(! grepl('Unknown SA2', SA2_ORIG)) %>% 
+  filter(! grepl('Transit ', SA2_ORIG)) %>% 
+  filter(! SA2_DEST %in% c("Not asked", "Total")) %>% 
+  filter(! grepl('Offshore and Migratory', SA2_DEST)) %>% 
+  filter(! grepl('Unknown Region', SA2_DEST)) %>% 
+  filter(! grepl('Unknown SA2', SA2_DEST)) %>% 
+  filter(! grepl('Transit ', SA2_DEST)) 
+
+stopifnot(length(unique(OD_01$SA2_ORIG)) ==length(unique(OD_01$SA2_DEST)))
+
+# temp <- OD_01 %>% 
+#   left_join(SA2, by = c("SA2_ORIG" = "SA2_NAME16")) %>% 
+#   filter(is.na(SA3_CODE16)) %>% 
+#   group_by(SA2_ORIG) %>% 
+#   summarise(total = sum(visitor_nights, na.rm = TRUE))
+
+OD_01 %<>% 
+  left_join(SA2, by = c("SA2_ORIG" = "SA2_NAME16")) %>% 
+  filter(! is.na(SA3_CODE16)) %>% 
+  rename(SA3_CODE16_ORIG = SA3_CODE16,
+         SA3_NAME16_ORIG = SA3_NAME16) %>% 
+  select(-SA2_MAIN16) %>% 
+  left_join(SA2, by = c("SA2_DEST" = "SA2_NAME16")) %>% 
+  filter(! is.na(SA3_CODE16)) %>% 
+  rename(SA3_CODE16_DEST = SA3_CODE16,
+         SA3_NAME16_DEST = SA3_NAME16) %>% 
+  select(-SA2_MAIN16, SA2_ORIG, SA2_DEST) %>% 
+  group_by(SA3_CODE16_ORIG, SA3_NAME16_ORIG , SA3_CODE16_DEST, SA3_NAME16_DEST) %>% 
+  summarise(visitor_nights = sum(visitor_nights)) %>% 
+  ungroup() %>% 
+  filter(! SA3_NAME16_ORIG %in% c("Christmas Island", "Cocos (Keeling) Islands", 
+                                  "Jervis Bay", "Norfolk Island")) %>% 
+  filter(! SA3_NAME16_DEST %in% c("Christmas Island", "Cocos (Keeling) Islands", 
+                                  "Jervis Bay", "Norfolk Island")
+  ) %>% 
+  mutate(date = ymd("2018-01-01"))
+
+stopifnot(nrow(OD_01 %>% filter(SA3_CODE16_ORIG == SA3_CODE16_DEST)) == nrow(SA3))
+
+OD_01 %>% 
+  select(SA3_CODE16_ORIG, SA3_CODE16_DEST, visitor_nights) %>% 
+  filter(visitor_nights > 0) %>% 
+  write_csv("data/NVS/clean/flows_jan.csv", col_names = FALSE)
+
+```
+
+![](flows_jan.png)
+
+[Interactive version](https://flowmap.blue/1Gs9LT-BCSwgDFbEYcuMx4TCczkdu4chaigaD5NHPrhE)
+
+### August 
+
+```{r include=FALSE}
+OD_08 <- read_csv("data/NVS/raw/OD_SA2_all_2018-08.zip", skip = 11) %>% 
+  remove_empty(c("rows", "cols")) %>% 
+  rename(SA2_ORIG = `Stopover state/region/SA2`) %>% 
+  filter(SA2_ORIG != "Home State/Region/SA2") %>% 
+  filter(SA2_ORIG != "(c) Copyright Space-Time Research 2013") %>% 
+  gather(`Baulkham Hills (East)`:Total, key = SA2_DEST, value = visitor_nights) %>% 
+  filter(! SA2_ORIG %in% c("Not asked", "Total")) %>% 
+  filter(! grepl('Offshore and Migratory', SA2_ORIG)) %>% 
+  filter(! grepl('Unknown Region', SA2_ORIG)) %>% 
+  filter(! grepl('Unknown SA2', SA2_ORIG)) %>% 
+  filter(! grepl('Transit ', SA2_ORIG)) %>% 
+  filter(! SA2_DEST %in% c("Not asked", "Total")) %>% 
+  filter(! grepl('Offshore and Migratory', SA2_DEST)) %>% 
+  filter(! grepl('Unknown Region', SA2_DEST)) %>% 
+  filter(! grepl('Unknown SA2', SA2_DEST)) %>% 
+  filter(! grepl('Transit ', SA2_DEST)) 
+
+stopifnot(length(unique(OD_08$SA2_ORIG)) ==length(unique(OD_08$SA2_DEST)))
+
+# temp <- OD_08 %>% 
+#   left_join(SA2, by = c("SA2_ORIG" = "SA2_NAME16")) %>% 
+#   filter(is.na(SA3_CODE16)) %>% 
+#   group_by(SA2_ORIG) %>% 
+#   summarise(total = sum(visitor_nights, na.rm = TRUE))
+
+OD_08 %<>% 
+  left_join(SA2, by = c("SA2_ORIG" = "SA2_NAME16")) %>% 
+  filter(! is.na(SA3_CODE16)) %>% 
+  rename(SA3_CODE16_ORIG = SA3_CODE16,
+         SA3_NAME16_ORIG = SA3_NAME16) %>% 
+  select(-SA2_MAIN16) %>% 
+  left_join(SA2, by = c("SA2_DEST" = "SA2_NAME16")) %>% 
+  filter(! is.na(SA3_CODE16)) %>% 
+  rename(SA3_CODE16_DEST = SA3_CODE16,
+         SA3_NAME16_DEST = SA3_NAME16) %>% 
+  select(-SA2_MAIN16, SA2_ORIG, SA2_DEST) %>% 
+  group_by(SA3_CODE16_ORIG, SA3_NAME16_ORIG , SA3_CODE16_DEST, SA3_NAME16_DEST) %>% 
+  summarise(visitor_nights = sum(visitor_nights)) %>% 
+  ungroup() %>% 
+  filter(! SA3_NAME16_ORIG %in% c("Christmas Island", "Cocos (Keeling) Islands", 
+                                  "Jervis Bay", "Norfolk Island")) %>% 
+  filter(! SA3_NAME16_DEST %in% c("Christmas Island", "Cocos (Keeling) Islands", 
+                                  "Jervis Bay", "Norfolk Island")
+  ) %>% 
+  mutate(date = ymd("2018-08-01"))
+
+stopifnot(nrow(OD_08 %>% filter(SA3_CODE16_ORIG == SA3_CODE16_DEST)) == nrow(SA3))
+
+OD_08 %>% 
+  select(SA3_CODE16_ORIG, SA3_CODE16_DEST, visitor_nights) %>% 
+  filter(visitor_nights > 0) %>% 
+  write_csv("data/NVS/clean/flows_aug.csv", col_names = FALSE)
+
+```
+
+![](flows_aug.png)
+
+[Interactive version](https://flowmap.blue/1Zltkg5IfjJflkpzZhgWgPGTGIAk8OdSXE7b0i09KYyM)
+
+
 <!-- ------------------------------------------------------------ --> 
 
 # OD relationship
@@ -239,19 +376,20 @@ rename(origin, origin =  visitor_nights) %>%
 SA3_net <- SA3 %>% 
   left_join(
     rename(origin, origin =  visitor_nights) %>% 
-      left_join(rename(destination, destination =  visitor_nights)) %>% 
+      left_join(
+        rename(destination, destination =  visitor_nights)) %>% 
       mutate(net = origin - destination) %>% 
       select(-origin, -destination))
 ```
 
-## Jan vs. May, reason: holidays
+## Jan vs. Aug, reason: holidays
 
 ```{r}
 SA3_net %>% 
   filter(stopover_reason == "Holiday") %>% 
-  filter(month %in% c("January", "May")) %>% 
+  filter(month %in% c("January", "August")) %>% 
   tm_shape() +
-  tm_polygons("net", n = 7, palette = "RdYlBu") +
+  tm_polygons("net", n = 7, palette = "RdYlBu", id = "SA3_NAME16") +
   tm_facets(by = "month")
 ```
 
@@ -260,8 +398,8 @@ SA3_net %>%
 ```{r}
 SA3_net %>% 
   filter(stopover_reason == "Business") %>% 
-  filter(month %in% c("January", "May")) %>% 
+  filter(month %in% c("January", "August")) %>% 
   tm_shape() +
-  tm_polygons("net", n = 7, palette = "RdYlBu") +
+  tm_polygons("net", n = 7, palette = "RdYlBu", id = "SA3_NAME16") +
   tm_facets(by = "month")
 ```
