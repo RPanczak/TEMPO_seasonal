@@ -6,6 +6,8 @@
 /docs
 *.html
 geocode.txt
+mapbox.txt
+opencage.txt
 hpc.txt
 SyncToy*
 .httr-oauth
