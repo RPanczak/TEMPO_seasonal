@@ -57,7 +57,6 @@ isUnique <- function(vector){
 p_load(bigrquery)
 
 project <- "goopla-1509504704864"
-# project <- "twitter-stream-205107"
 
 sql <- "SELECT * FROM `twitter-stream-205107.twitter_stream.streaming`"
 
@@ -81,6 +80,24 @@ saveRDS(tweets_raw, file = "./data/Twitter/raw/tweets_raw.rds")
 # gsutil rm gs://twitter_stream-streaming/2018-12-04_*.csv
 
 
+# twitter_places_geocoded - contains place_full_name for the top 39,999 occurring places, tweet count in the original tweet table, and the full geocode JSON result from Google's Maps API
+
+sql <- "SELECT * FROM `twitter-stream-205107.twitter_stream.twitter_places_geocoded`"
+
+tb <- bq_project_query(project, sql)
+
+twitter_places_geocoded <- bq_table_download(tb, bigint = "integer64")
+
+saveRDS(twitter_places_geocoded, file = "./data/Twitter/raw/twitter_places_geocoded.rds")
+
+
+sql <- "SELECT * FROM `twitter-stream-205107.twitter_stream.geocoded_places_asgs`"
+
+tb <- bq_project_query(project, sql)
+
+geocoded_places_asgs <- bq_table_download(tb, bigint = "integer64")
+
+saveRDS(geocoded_places_asgs, file = "./data/Twitter/raw/geocoded_places_asgs.rds")
 
 
 rm(project, sql, tb)
@@ -434,7 +451,7 @@ place_full_name <- tweets_clean_2019_07_22 %>%
   ungroup()
 
 p_load(opencage)
-key <- "faf26cdb6ba14a7d8e62e908e880ebd0"
+key <- readr::read_file("opencage.txt")
 
 # temp <- opencage_forward("zero95", key, countrycode = "AU")
 # temp$results 
