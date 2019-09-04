@@ -41,6 +41,47 @@ SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") 
   select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
 ```
 
+
+```{r geodata_prep, eval=FALSE}
+p_load(rmapshaper)
+
+# postcode outlines 
+# exclude 'No usual address (Aust.)' 
+# exclude 'Migratory - Offshore - Shipping (Aust.)'
+
+POA <- sf::read_sf("./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST.shp") %>% 
+  filter(POA_CODE16 != "9494") %>% 
+  filter(POA_CODE16 != "9797") %>% 
+  select(-POA_NAME16, -AREASQKM16) %>% 
+  st_transform(3112)
+
+POA_clean <- ms_simplify(POA, keep = 0.05, weighting = 0.7) # default settings
+
+saveRDS(POA_clean, file = "./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST_clean.rds")
+
+# print(object.size(POA), units = "MB")
+# print(object.size(POA_clean), units = "MB")
+
+```
+
+```{r}
+POA <- readRDS(file = "./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST_clean.rds")
+
+# table(POA$POA_CODE16 == POA$POA_NAME16)
+
+# class(POA)
+# nrow(POA)
+# names(POA)
+# st_crs(POA)
+# str(POA)
+# format(object.size(POA), units = "Mb")
+
+POA_centr <- POA %>% 
+  st_centroid()
+
+# qtm(POA_centr)
+```
+
 <!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
 
@@ -170,9 +211,11 @@ ggplot(ERP_SA2_2018, aes(x = s_t_name, y = ERP_18)) +
 <!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
 
-# Census pop POA
+# Census pop 
 
 Data from https://datapacks.censusdata.abs.gov.au/datapacks/
+
+## POA
 
 ```{r}
 pop_POA <- read_csv("Data/ABS/2016 Census GCP Postal Areas for AUST/2016Census_G04A_AUS_POA.csv") %>% 
@@ -201,6 +244,38 @@ POA_centr %>%
   tm_shape() +
   tm_bubbles("pop_cen_18plus", scale=.5)
 ```
+
+
+## SA3 
+
+```{r}
+pop_SA3 <- read_csv("data/ABS/2016 Census GCP Statistical Area 3 for AUST/2016Census_G04A_AUS_SA3.csv") %>% 
+  left_join(read_csv("data/ABS/2016 Census GCP Statistical Area 3 for AUST/2016Census_G04B_AUS_SA3.csv")) %>% 
+  select(-ends_with("_F"), -ends_with("_M")) %>% 
+  select(SA3_CODE_2016, Age_yr_18_P, Age_yr_19_P, matches("(Age_yr_\\d\\d_\\d\\d_P)"), Age_yr_100_yr_over_P, Tot_P) %>% 
+  select(-Age_yr_10_14_P, -Age_yr_15_19_P) %>% 
+  mutate(pop_cen_18plus = rowSums(select(., Age_yr_18_P:Age_yr_100_yr_over_P), na.rm = TRUE)) %>% 
+  select(SA3_CODE_2016, Tot_P, pop_cen_18plus) %>% 
+  rename(SA3_CODE16 = SA3_CODE_2016,
+         total_population = Tot_P) %>% 
+  arrange(SA3_CODE16)
+```
+
+Spatial resolution - **`r nrow(pop_SA3)`** postcodes.   
+
+```{r}
+ggplot(pop_SA3, aes(pop_cen_18plus)) + 
+  geom_histogram() +
+  ylab("Number of SA3") + xlab("Population") + theme_minimal()
+```
+
+```{r eval=FALSE, include=FALSE}
+POA_centr %>% 
+  left_join(pop_SA3) %>% 
+  tm_shape() +
+  tm_bubbles("pop_cen_18plus", scale=.5)
+```
+
 
 <!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
