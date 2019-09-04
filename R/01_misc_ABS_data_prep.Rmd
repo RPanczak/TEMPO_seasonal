@@ -39,6 +39,7 @@ SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") 
   mutate(SA3_CODE16 = as.numeric(SA3_CODE16)) %>% 
   rename(sa3_code16 = SA3_CODE16) %>% 
   select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
+
 ```
 
 
@@ -49,7 +50,7 @@ p_load(rmapshaper)
 # exclude 'No usual address (Aust.)' 
 # exclude 'Migratory - Offshore - Shipping (Aust.)'
 
-POA <- sf::read_sf("./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST.shp") %>% 
+POA <- sf::read_sf("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST.shp") %>% 
   filter(POA_CODE16 != "9494") %>% 
   filter(POA_CODE16 != "9797") %>% 
   select(-POA_NAME16, -AREASQKM16) %>% 
@@ -57,7 +58,7 @@ POA <- sf::read_sf("./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST.shp"
 
 POA_clean <- ms_simplify(POA, keep = 0.05, weighting = 0.7) # default settings
 
-saveRDS(POA_clean, file = "./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST_clean.rds")
+saveRDS(POA_clean, file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/POA_2016_AUST_clean.rds")
 
 # print(object.size(POA), units = "MB")
 # print(object.size(POA_clean), units = "MB")
@@ -65,7 +66,7 @@ saveRDS(POA_clean, file = "./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AU
 ```
 
 ```{r}
-POA <- readRDS(file = "./data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST_clean.rds")
+POA <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/POA_2016_AUST_clean.rds")
 
 # table(POA$POA_CODE16 == POA$POA_NAME16)
 
@@ -197,14 +198,17 @@ rm(NSW, Vic, Qld, SA, WA, Tas, NT, ACT)
 Using file *'Released at 11.30am (Canberra time) 27 March 2019'*.
 
 ```{r}
-ERP_SA2_2018 <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds")
+ERP_SA3_2018 <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds") %>% 
+  group_by(s_t_name,sa3_code, sa3_name) %>% 
+  summarise(ERP_18 = sum(ERP_18)) %>% 
+  ungroup()
 ```
 
 Spatial resolution - **`r nrow(ERP_SA2_2018)`** SA2s.   
 
 ```{r}
-ggplot(ERP_SA2_2018, aes(x = s_t_name, y = ERP_18)) +
-  geom_boxplot() + 
+ggplot(ERP_SA3_2018, aes(x = s_t_name, y = ERP_18)) +
+  geom_boxplot(varwidth = TRUE) + 
   xlab("") + theme_minimal()
 ```
 
