@@ -1,0 +1,107 @@
+---
+title: "Misc IVS data preparation"
+# subtitle: 
+# author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    highlight: pygments
+    keep_md: no
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
+                      fig.width=9, fig.height=7, dpi=300, out.width="900px", out.height="700px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, magrittr, readr, readxl, lubridate, 
+       scales, janitor, kableExtra, 
+       visdat, mvtsplot,  
+       sf, tmap, tmaptools)
+tmap_mode("view")
+```
+
+
+```{r}
+SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
+  select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
+
+SA3_centr <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_centr.rds") %>% 
+  left_join(select(st_drop_geometry(SA3), SA3_CODE16, SA3_NAME16)) %>% 
+  select(SA3_CODE16, SA3_NAME16, lat, lon)
+
+SA2 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA2_2016_AUST_clean.rds") %>% 
+  st_drop_geometry() %>% 
+  select(SA2_MAIN16, SA2_NAME16, SA3_CODE16, SA3_NAME16)
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Origins
+
+Using data from `Stopover SA2, Quarter in year and Main reason for trip.csv`
+
+Removed observations with region codes like: `Not asked`, `Offshore and Migratory ___`, `Unknown Region ___`, `Transit  ___`,  `Unknown SA2`
+
+`SA3`s from Other Teritories were removed. 
+
+```{r include=FALSE}
+destinations <- read_csv("data/IVS/raw/Stopover SA2, Quarter in year and Main reason for trip.csv", skip = 11) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>% 
+  rename(SA2_NAME16 = stopover_state_region_sa2,
+         visitor_nights = x4) %>% 
+  mutate(
+    quarter_in_year = case_when(
+      quarter_in_year == "March quarter" ~ "2018: Q1",
+      quarter_in_year == "June quarter" ~ "2018: Q2",
+      quarter_in_year == "September quarter" ~ "2018: Q3",
+      quarter_in_year == "December quarter" ~ "2018: Q4"
+    )) %>% 
+  mutate(quarter_in_year = yq(quarter_in_year)) %>% 
+  fill(SA2_NAME16, quarter_in_year) %>% 
+  # mutate(month = factor(month, levels = month.name)) %>% 
+  filter(SA2_NAME16 != "(c) Copyright Space-Time Research 2013") %>% 
+  filter(SA2_NAME16 != "Total") %>% 
+  filter(! SA2_NAME16 %in% c("Not asked")) %>% 
+  filter(! grepl('Offshore and Migratory', SA2_NAME16)) %>% 
+  filter(! grepl('Unknown Region', SA2_NAME16)) %>% 
+  filter(! grepl('Unknown SA2', SA2_NAME16)) %>% 
+  filter(! grepl('Transit ', SA2_NAME16)) %>% 
+  left_join(SA2) %>% 
+  filter(! is.na(SA3_CODE16)) %>% 
+  filter(! SA3_NAME16 %in% c("Christmas Island", "Cocos (Keeling) Islands", 
+                             "Jervis Bay", "Norfolk Island")) %>% 
+  group_by(SA3_CODE16, SA3_NAME16, main_reason_for_trip, quarter_in_year) %>% 
+  summarise(visitor_nights = sum(visitor_nights)) %>% 
+  ungroup()
+```
+
+Median values of guest nights per quarter per reason:
+
+```{r}
+temp <- destinations %>% 
+  group_by(main_reason_for_trip, quarter_in_year) %>% 
+  summarize(median = median(visitor_nights))
+
+temp %>% 
+  filter(! main_reason_for_trip %in% c("Other reason")) %>%
+  ggplot(aes(x = quarter_in_year, y = median, 
+             group = main_reason_for_trip, colour = main_reason_for_trip)) + 
+  geom_line() +
+  theme_light() +
+  labs(x = "", y = "Median GN", colour = "Stopover reason")
+```
