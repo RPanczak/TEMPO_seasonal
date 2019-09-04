@@ -32,12 +32,174 @@ p_load(tidyverse, readr, readxl, lubridate,
        scales, janitor, kableExtra, 
        visdat,
        sf, tmap, tmaptools)
+
 tmap_mode("view")
 
 SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
   mutate(SA3_CODE16 = as.numeric(SA3_CODE16)) %>% 
   rename(sa3_code16 = SA3_CODE16) %>% 
   select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
+```
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+# ERP
+
+```{r eval=FALSE, include=FALSE}
+NSW <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 1", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(NSW)
+
+Vic <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 2", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(Vic)
+
+Qld <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 3", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(Qld)
+
+SA <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 4", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(SA)
+
+WA <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 5", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(WA)
+
+Tas <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 6", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(Tas)
+
+NT <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 7", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(NT)
+
+ACT <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
+                          sheet = "Table 8", skip = 7, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  filter(!is.na(sa2_code)) %>% 
+  dplyr::select(-km2, -persons_km2) %>% 
+  dplyr::rename(ERP_17 = "no_11", ERP_18 = "no_12", 
+                ERP_ch_abs = "no_14", ERP_ch_per = "percent", 
+                NI = "no_17", NIM = "no_18", NOM = "no_19")
+
+# View(ACT)
+
+ERP_SA2_2018 <- bind_rows(NSW, Vic, Qld, SA, WA, Tas, NT, ACT) %>% 
+  # mutate(SA2_NAME = gsub("`", "'", SA2_NAME)) %>% # rogue character for apostrophe, not matching ArcGIS!
+  write_csv("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.csv", na = "", append = FALSE)
+
+saveRDS(ERP_SA2_2018, "./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds")
+rm(NSW, Vic, Qld, SA, WA, Tas, NT, ACT) 
+
+# summary(ERP_SA2_2016$ERP)
+```
+
+Using file *'Released at 11.30am (Canberra time) 27 March 2019'*.
+
+```{r}
+ERP_SA2_2018 <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds")
+```
+
+Spatial resolution - **`r nrow(ERP_SA2_2018)`** SA2s.   
+
+```{r}
+ggplot(ERP_SA2_2018, aes(x = s_t_name, y = ERP_18)) +
+  geom_boxplot() + 
+  xlab("") + theme_minimal()
+```
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+# Census pop POA
+
+Data from https://datapacks.censusdata.abs.gov.au/datapacks/
+
+```{r}
+pop_POA <- read_csv("Data/ABS/2016 Census GCP Postal Areas for AUST/2016Census_G04A_AUS_POA.csv") %>% 
+  left_join(read_csv("Data/ABS/2016 Census GCP Postal Areas for AUST/2016Census_G04B_AUS_POA.csv")) %>% 
+  select(-ends_with("_F"), -ends_with("_M")) %>% 
+  select(POA_CODE_2016, Age_yr_18_P, Age_yr_19_P, matches("(Age_yr_\\d\\d_\\d\\d_P)"), Age_yr_100_yr_over_P, Tot_P) %>% 
+  select(-Age_yr_10_14_P, -Age_yr_15_19_P) %>% 
+  mutate(pop_cen_18plus = rowSums(select(., Age_yr_18_P:Age_yr_100_yr_over_P), na.rm = TRUE)) %>% 
+  mutate(POA_CODE_2016 = str_replace(POA_CODE_2016, "POA", "")) %>% 
+  select(POA_CODE_2016, pop_cen_18plus) %>% 
+  rename(POA_CODE16 = POA_CODE_2016) %>% 
+  arrange(POA_CODE16)
+```
+
+Spatial resolution - **`r nrow(pop_POA)`** postcodes.   
+
+```{r}
+ggplot(pop_POA, aes(pop_cen_18plus)) + 
+  geom_histogram() +
+  ylab("Number of postcodes") + xlab("Population") + theme_minimal()
+```
+
+```{r eval=FALSE, include=FALSE}
+POA_centr %>% 
+  left_join(pop_POA) %>% 
+  tm_shape() +
+  tm_bubbles("pop_cen_18plus", scale=.5)
 ```
 
 <!-- ------------------------------------------------------------ --> 
