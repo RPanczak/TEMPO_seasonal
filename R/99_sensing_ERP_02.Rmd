@@ -1,0 +1,271 @@
+---
+title: "Sensing ERP - EDA 02"
+author: "Radek Panczak et al."
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    number_sections: true
+    theme: united 
+    highlight: pygments 
+---
+
+<!-- ------------------------------------------------------------ --> 
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+
+knitr::opts_knit$set(root.dir = 'R:/ABSLINKAGE-A1760/ABS Linkage')
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readxl, magrittr, here, janitor,
+       skimr, sjmisc, naniar, kableExtra, statar, scales, anytime,
+       sf, tmap, tmaptools)
+
+tmap_mode("view") # makes map interactive
+
+```
+
+# Twitter
+
+## Data
+
+```{r}
+tweets_geo2_inside <- readRDS(file = "R:/POP247-Q0786/data/Twitter/clean/tweets_geo2_inside.rds")
+```
+
+**`r nrow(tweets_geo2_inside)`** georeferenced (point level) tweets from `tweets_geo2_inside` dataset was used.
+
+```{r}
+tweets_geo2_proc <- tweets_geo2_inside %>% 
+  select(-source, -place_id, -place_country, -place_bounding_box, 
+         -user_utc_offset, -user_time_zone,
+         -user_followers_count, -user_friends_count, -user_favourites_count, -user_created_at,
+         -in_reply_to_status_id_str, -in_reply_to_user_id_str,
+         -geo_lat, -geo_lon, -orig_lat, -orig_lon) %>% 
+  mutate(date = as.Date(created_at)) %>% 
+  filter(date >= anydate("2018-12-01") & date <= anydate("2019-02-28"))
+```
+
+**`r nrow(tweets_geo2_proc)`** tweets from Dec '19 - Feb '19 were included. They were linked to postcodes and unique number of users per month was calculated.
+
+```{r}
+tweets_geo2_join <- tweets_geo2_proc %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>% 
+  st_transform(3112) %>% 
+  st_join(POA, join = st_intersects) %>% 
+  filter(!is.na(POA_CODE16))
+```
+
+```{r}
+tweets_geo2_agg <- tweets_geo2_join %>% 
+  st_drop_geometry() %>% 
+  mutate(month = format(date, "%y-%m")) %>% 
+  group_by(POA_CODE16, month) %>% 
+  summarise(unique_users = n_distinct(UID))
+```
+
+## Results 
+
+### Number of distinct users per month per postcode:
+
+```{r}
+tweets_geo2_agg %>% 
+  ggplot(aes(x=month, y=unique_users)) +
+  geom_boxplot() + scale_y_log10()
+```
+
+Seems like Feb is affected by data collection outage?
+
+### Spatial view of Dec
+
+```{r}
+tweets_geo2_poa <- POA_centr %>% 
+  left_join(tweets_geo2_agg) %>% 
+  filter(month == "18-12" | month == "19-01")
+
+tweets_geo2_poa %>% 
+  filter(month == "18-12") %>% 
+  tm_shape() +
+  tm_bubbles("unique_users", scale=.5) + 
+  tm_facets(by = "month")
+```
+
+### Differences Jan - Dec
+
+```{r}
+tweets_geo2_agg %>% 
+  filter(month == "18-12" | month == "19-01") %>% 
+  spread(month, unique_users) %>% 
+  mutate(dif = `19-01` - `18-12`) %>% 
+  ggplot(aes(dif))+
+  geom_histogram()
+```
+
+### Ratio to Census pops J
+
+Unique users / Pop 18+ multiplied by 1000
+
+```{r}
+POA_twitter <- POA %>% 
+  left_join(pop_POA) %>% 
+  left_join(tweets_geo2_agg) %>% 
+  mutate(Twitter_ratio = (unique_users / pop_cen_18plus) *1000)
+```
+
+#### POA without pops, with Tweets
+
+```{r}
+POA_twitter %>% 
+  filter(month == "18-12" | month == "19-01") %>% 
+  filter(Twitter_ratio == Inf) %>% 
+  tm_shape() +
+  tm_dots(col = "red") + 
+  tm_facets(by = "month", sync = TRUE)
+```
+
+Seems to pick up some airports, campuses & shopping centres.
+
+#### POA with high ratio
+
+```{r}
+POA_twitter %>% 
+  filter(month == "18-12" | month == "19-01") %>% 
+  filter(Twitter_ratio >= 100 & Twitter_ratio < Inf) %>% 
+  tm_shape() +
+  tm_dots(col = "red") + 
+  tm_facets(by = "month", sync = TRUE)
+```
+
+Seems to pick up industrial areas (Malaga in Perth), remorte areas & parks.
+
+#### Ratio distribution
+
+Excluding two categories mapped above
+
+```{r}
+POA_twitter %>% 
+  filter(month == "18-12" | month == "19-01") %>% 
+  filter(Twitter_ratio < 100) %>% 
+  filter(month == "18-12") %>% 
+  ggplot(aes(Twitter_ratio))+
+  geom_histogram(binwidth = 1)
+```
+
+```{r}
+POA_twitter %>% 
+  filter(month == "18-12" | month == "19-01") %>% 
+  filter(Twitter_ratio < 100) %>% 
+  # filter(month == "18-12") %>%
+  tm_shape() +
+  tm_fill(col = "Twitter_ratio", style = "fixed", palette = "div",
+          breaks = c(0, 1, 2, 5, 10, 20, 30)) + 
+  tm_facets(by = "month", sync = TRUE)
+```
+
+# Airbnb
+
+## Data
+
+```{r}
+POA_2016_join_new <- readRDS(file = "R:/AIRBNB-Q0931/data/airdna/clean/POA_2016_join_new.rds")
+
+monthly_new_select <- readRDS("R:/AIRBNB-Q0931/data/airdna/clean/monthly_new_select.Rds") %>% 
+  filter(reporting_month >= as.Date("2018-12-01")) %>% 
+  filter(reporting_month <= as.Date("2019-01-01")) %>% 
+  filter(number_of_reservations > 0) %>% 
+  left_join(POA_2016_join_new)
+```
+
+`r nrow(monthly_new_select)` records of `r length(unique(monthly_new_select$property_id))` properties that have at least one bookin in Dec and Jan were used. `r sum(monthly_new_select$number_of_reservations, na.rm = TRUE)` bookings were agggregated by postcode.
+
+```{r}
+temp <- monthly_new_select %>% 
+  group_by(POA_CODE16, reporting_month) %>% 
+  summarise(number_of_reservations = sum(number_of_reservations, na.rm = TRUE)) 
+
+POA_airbnb <- POA %>% 
+  left_join(pop_POA) %>% 
+  left_join(temp)%>% 
+  mutate(Airbnb_ratio = (number_of_reservations / pop_cen_18plus))
+
+rm(monthly_new_select, POA_2016_join_new, temp)
+gc()
+```
+
+
+## Results 
+
+### Number of reservations per month per postcode:
+
+```{r}
+POA_airbnb %>% 
+  filter(!is.na(reporting_month)) %>% 
+  ggplot(aes(x=as.factor(reporting_month), y=number_of_reservations)) +
+  geom_boxplot() + scale_y_log10()
+```
+
+### Spatial view of Dec
+
+```{r}
+POA_airbnb %>% 
+  filter(reporting_month == as.Date("2018-12-01")) %>% 
+  tm_shape() +
+  tm_bubbles("number_of_reservations", scale=.5)
+```
+
+### Ratio to Census pops J
+
+Number of reservations / Pop 18+
+
+#### POA without pops, with bookings
+
+```{r}
+POA_airbnb %>% 
+  filter(Airbnb_ratio == Inf) %>% 
+  tm_shape() +
+  tm_dots(col = "red") + 
+  tm_facets(by = "reporting_month", sync = TRUE)
+```
+
+
+#### POA with high ratio
+
+Ratio equal or more than 1 ie. same amount of reservations as pops
+
+```{r}
+POA_airbnb %>% 
+  filter(Airbnb_ratio >= 1 & Airbnb_ratio < Inf) %>% 
+  tm_shape() +
+  tm_dots(col = "red") + 
+  tm_facets(by = "reporting_month", sync = TRUE)
+```
+
+#### Ratio distribution
+
+Excluding first category above
+
+```{r}
+POA_airbnb %>% 
+  filter(reporting_month == as.Date("2018-12-01")) %>% 
+  filter(Airbnb_ratio < Inf) %>% 
+  ggplot(aes(Airbnb_ratio))+
+  geom_histogram(binwidth = 0.1)
+```
+
+```{r}
+POA_airbnb %>% 
+  filter(Airbnb_ratio < Inf) %>% 
+  tm_shape() +
+  tm_fill(col = "Airbnb_ratio", style = "fixed", palette = "div",
+          breaks = c(0, 0.1, 0.5, 1, 2)) + 
+  tm_facets(by = "reporting_month", sync = TRUE)
+```
+
