@@ -31,6 +31,7 @@ p_load(tidyverse, magrittr, readr, readxl, lubridate,
        scales, janitor, kableExtra, 
        visdat, mvtsplot,  
        sf, tmap, tmaptools)
+
 tmap_mode("view")
 ```
 
@@ -197,7 +198,7 @@ temp %>%
 destination %>% 
   filter(stopover_reason %in% c("Holiday")) %>% 
   ggplot(aes(x = month, y = visitor_nights, group = SA3_CODE16)) + 
-  geom_line() +
+  geom_line(alpha = 0.5) +
   theme_light() +
   labs(x = "", y = "Median GN", colour = "Stopover reason")
 ```
@@ -415,8 +416,6 @@ OD_01_bd <-
   select(-SA3_NAME16.x, -SA3_NAME16.y) %>% 
   as.data.frame()
 
-write_csv(OD_01_bd, "data/NVS/clean/kepler_jan.csv")
-
 ```
 
 ```{r}
@@ -437,6 +436,10 @@ mapdeck(token = key,
 
 ### kepler
 
+```{r}
+write_csv(OD_01_bd, "data/NVS/clean/kepler_jan.csv")
+```
+
 [Map](kepler.gl.nvs.jan.html)
 
 
@@ -449,12 +452,49 @@ SA3_net <- SA3 %>%
   left_join(
     rename(origin, origin =  visitor_nights) %>% 
       left_join(
-        rename(destination, destination =  visitor_nights)) %>% 
+        rename(destination, destination =  visitor_nights)
+      ) %>% 
       mutate(net = origin - destination) %>% 
       select(-origin, -destination))
+
+# summary(SA3_net$net)
 ```
 
-## Jan vs. Aug, reason: holidays
+## Jan nets across reason
+
+```{r}
+SA3_net %>% 
+  filter(month == "January") %>% 
+  ggplot() +
+  geom_histogram(aes(net)) +
+  facet_wrap(~stopover_reason)
+```
+
+## Yearly nets 
+
+### Holiday
+
+```{r}
+SA3_net %>% 
+  filter(stopover_reason == "Business") %>% 
+  ggplot() +
+  geom_histogram(aes(net)) +
+  facet_wrap(~month)
+```
+
+### Business
+
+```{r}
+SA3_net %>% 
+  filter(stopover_reason == "Business") %>% 
+  ggplot() +
+  geom_histogram(aes(net)) +
+  facet_wrap(~month)
+```
+
+## Spatial view
+
+### Jan vs. Aug, reason: holidays
 
 ```{r}
 SA3_net %>% 
@@ -465,7 +505,7 @@ SA3_net %>%
   tm_facets(by = "month")
 ```
 
-## Jan vs. May, reason: business
+### Jan vs. May, reason: business
 
 ```{r}
 SA3_net %>% 
