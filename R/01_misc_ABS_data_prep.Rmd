@@ -86,6 +86,41 @@ POA_centr <- POA %>%
 <!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
 
+# Population present
+```{r}
+pop_present <- readxl::read_xls("./Data/ABS/Present Population OAD and Natural Increase.xls", 
+                                sheet = "Daily Population Present", 
+                                skip = 1, col_names = TRUE) %>% 
+  clean_names() %>%
+  remove_empty(c("rows", "cols")) %>%
+  dplyr::select(-x1, -x9, -natural_increase, -days_in_quarter, -daily_change_in_erp) %>% 
+  dplyr::rename(date = x2) 
+
+saveRDS(pop_present, "./Data/ABS/pop_present.Rds")
+
+pop_present_month <- pop_present %>% 
+  filter(date != ymd("2017-12-31")) %>% 
+  mutate(start = floor_date(date, unit = "month"),
+         end = ceiling_date(date, unit = "month", change_on_boundary = TRUE) - days(1)) %>% 
+  group_by(start, end) %>% 
+  summarize(daily_physically_present = mean(daily_physically_present))
+  
+saveRDS(pop_present_month, "./Data/ABS/pop_present_month.Rds")
+```
+
+```{r}
+pop_present %>% 
+  ggplot(aes(x=date, y=daily_physically_present)) +
+  geom_segment(data = pop_present_month, 
+               aes(x=start, xend=end, yend=daily_physically_present)) +
+  geom_line(size = 1, colour = "darkorchid4") +
+  scale_x_datetime(date_breaks = "2 months", date_minor_breaks = "1 month") + 
+  theme_minimal() + xlab("") + ylab("Daily physically present")
+```
+
+
+<!-- ------------------------------------------------------------ --> 
+
 # ERP 18
 
 ```{r eval=FALSE, include=FALSE}
@@ -126,7 +161,7 @@ Qld <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Austral
 # View(Qld)
 
 SA <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
-                          sheet = "Table 4", skip = 7, col_names = TRUE) %>% 
+                         sheet = "Table 4", skip = 7, col_names = TRUE) %>% 
   clean_names() %>%
   remove_empty(c("rows", "cols")) %>%
   filter(!is.na(sa2_code)) %>% 
@@ -138,7 +173,7 @@ SA <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australi
 # View(SA)
 
 WA <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
-                          sheet = "Table 5", skip = 7, col_names = TRUE) %>% 
+                         sheet = "Table 5", skip = 7, col_names = TRUE) %>% 
   clean_names() %>%
   remove_empty(c("rows", "cols")) %>%
   filter(!is.na(sa2_code)) %>% 
@@ -162,7 +197,7 @@ Tas <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Austral
 # View(Tas)
 
 NT <- readxl::read_excel("./Data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/raw/32180ds0001_2017-18.xls", 
-                          sheet = "Table 7", skip = 7, col_names = TRUE) %>% 
+                         sheet = "Table 7", skip = 7, col_names = TRUE) %>% 
   clean_names() %>%
   remove_empty(c("rows", "cols")) %>%
   filter(!is.na(sa2_code)) %>% 
@@ -204,7 +239,7 @@ ERP_SA3_2018 <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia
   ungroup()
 ```
 
-Spatial resolution - **`r nrow(ERP_SA2_2018)`** SA2s.   
+Spatial resolution - **`r nrow(ERP_SA3_2018)`** SA2s.   
 
 ```{r}
 ggplot(ERP_SA3_2018, aes(x = s_t_name, y = ERP_18)) +
@@ -212,7 +247,6 @@ ggplot(ERP_SA3_2018, aes(x = s_t_name, y = ERP_18)) +
   xlab("") + theme_minimal()
 ```
 
-<!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
 
 # Census pop 
@@ -281,7 +315,6 @@ POA_centr %>%
 ```
 
 
-<!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
 
 # Land use
