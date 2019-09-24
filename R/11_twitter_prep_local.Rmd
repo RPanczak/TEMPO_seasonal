@@ -101,6 +101,17 @@ geocoded_places_asgs <- bq_table_download(tb, bigint = "integer64")
 
 saveRDS(geocoded_places_asgs, file = "./data/Twitter/raw/geocoded_places_asgs.rds")
 
+
+# place_full_name, lat/lon reported by google, corresponding SA2 MAINCODE and the max spatial resolution. (Still working on the spatial resolution)
+
+sql <- "SELECT * FROM `twitter-stream-205107.twitter_stream.twitter_ABS_month_SA3`"
+
+tb <- bq_project_query(project, sql)
+
+twitter_ABS_month_SA3 <- bq_table_download(tb, bigint = "integer64")
+
+saveRDS(twitter_ABS_month_SA3, file = "./data/Twitter/clean/twitter_ABS_month_SA3.rds")
+
 rm(project, sql, tb)
 
 p_unload(bigrquery)
