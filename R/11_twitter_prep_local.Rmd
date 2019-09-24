@@ -438,6 +438,20 @@ place_full_name %>%
 
 There are `r comma(nrow(place_full_name))` distinct locations mentioned with various quality and geographical precision. [Google Maps Geocoding API](https://developers.google.com/maps/documentation/geocoding/intro) (via package `ggmap`) was used to get coordinates for these places. 
 
+No all the place names are sufficient to determine location precisely. Examples of few names that are imprecise.. 
+
+```{r}
+errors <- c("Banjo Paterson Park", "Kookaburra Park", "Sportscare", "Park", "Outback")
+
+geocoded_places_asgs %>%
+  filter(place_full_name %in% errors)
+```
+
+and few where even more informative name doesnt point to one place...
+
+![Banjo Paterson Park.](banjo.PNG)
+
+
 Different place names offer different precision of link to official geography. 
 
 ```{r}
@@ -454,11 +468,6 @@ geocoded_places_asgs %<>%
   select(-point_SA2) %>% 
   rename(gog_lat = lat,
          gog_lon = lon)
-
-# errors <- c("Banjo Paterson Park", "Sportscare", "Stage door", "Lakelands", "Park", "Outback")
-# 
-# geocoded_places_asgs %>% 
-#   filter(place_full_name %in% errors)
 
 tweets_clean_2019_07_22 %<>% 
   left_join(geocoded_places_asgs) %>% 
