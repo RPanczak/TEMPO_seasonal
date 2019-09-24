@@ -1,5 +1,5 @@
 ---
-title: "BITRE airports data preparation 01"
+title: "BITRE airports data preparation"
 author: "Radoslaw Panczak"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 mainfont: DejaVu Sans
@@ -79,6 +79,8 @@ airport_2018 <- airport %>%
 
 # Airport locations
 
+## Point
+
 There are `r length(unique(airport$airport))` airports listed in the data. They were geocoded using Google Maps. 
 
 ```{r eval=FALSE, include=FALSE}
@@ -116,13 +118,148 @@ saveRDS(airport_geo, "data/BITRE/clean/airport_geo.Rds")
 
 
 ```{r}
-airport_geo <- readRDS("data/BITRE/clean/airport_geo.Rds")
+airport_geo <- readRDS("data/BITRE/clean/airport_geo.Rds") %>% 
+  st_transform(3112)
 
 airport_geo %>% 
   tm_shape() + 
   tm_dots(text = "airport")
-  # tm_markers(text = "airport", clustering = FALSE)
+# tm_markers(text = "airport", clustering = FALSE)
 ```
+
+## SA3 overlay
+
+Simple SA3 overlay might be helpful in case of small airports and remote areas?
+
+```{r}
+SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
+  select(-AREASQKM16)
+
+SA3_over <- right_join(SA3, 
+                       st_join(airport_geo, SA3, join = st_intersects) %>% 
+                         select(SA3_CODE16) %>% 
+                         st_drop_geometry())
+
+SA3_rest <- anti_join(SA3, SA3_over %>% select(SA3_CODE16) %>% st_drop_geometry())
+
+tm_shape(SA3_over) + 
+  tm_polygons(col = "red", alpha = .5, border.col = NA, id = "SA3_NAME16") +
+  tm_shape(SA3_rest) + 
+  tm_polygons(col = "grey", alpha = .5, border.col = NA, id = "SA3_NAME16") +
+  tm_shape(filter(airport_geo, airport == "Adelaide Airport")) + 
+  tm_dots(text = "airport")
+```
+
+
+## Areas of 'influence'
+
+```{r include=FALSE}
+airport_area <- function(airport_name, airport_SA3, airport_influence_type, airport_influence_value) {
+  
+    # SA3 overlaping airport is red
+    tm_shape(filter(SA3_over, SA3_NAME16 == airport_SA3)) +
+    tm_polygons(col = "red", alpha = .5, border.col = NA, id = "SA3_NAME16") +
+    
+    # other SA3s with airports are darkgrey
+    tm_shape(filter(SA3_over, SA3_NAME16 != airport_SA3)) +
+    tm_polygons(col = "darkgrey", alpha = .5, border.col = NA, id = "SA3_NAME16") +
+    
+    # main airport is larger
+    tm_shape(filter(airport_geo, airport == airport_name)) + 
+    tm_dots(size = 0.05, text = "airport") +
+    
+    # other airports are smaller
+    tm_shape(filter(airport_geo, airport != airport_name)) + 
+    tm_dots(size = 0.01, text = "airport") +
+    
+    # zone of influence is in orange
+    # areas with no airports and not in zone of influence
+    if (airport_influence_type == "SA4_NAME16")  {
+      tm_shape(filter(SA3_rest, SA4_NAME16 == airport_influence_value)) +
+        tm_polygons(col = "orange", alpha = .5, border.col = NA, id = "SA3_NAME16") +
+      tm_shape(filter(SA3_rest, SA4_NAME16 != airport_influence_value)) +
+        tm_polygons(col = "lightgrey", alpha = .5, border.col = NA, id = "SA3_NAME16")
+    } 
+    else if (airport_influence_type == "GCC_NAME16") {
+      tm_shape(filter(SA3_rest, GCC_NAME16 == airport_influence_value)) +
+        tm_polygons(col = "orange", alpha = .5, border.col = NA, id = "SA3_NAME16")  +
+      tm_shape(filter(SA3_rest, GCC_NAME16 != airport_influence_value)) +
+        tm_polygons(col = "lightgrey", alpha = .5, border.col = NA, id = "SA3_NAME16")
+    } 
+    else if (airport_influence_type == "none") {
+      tm_shape(SA3_rest) +
+        tm_polygons(col = "lightgrey", alpha = .5, border.col = NA, id = "SA3_NAME16")
+    } 
+  }
+```
+
+```{r}
+# sjmisc::frq(airport_geo$airport)
+
+airport_area(airport_name = "Adelaide Airport", airport_SA3 = "West Torrens",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Greater Adelaide")
+
+airport_area(airport_name = "Alice Springs Airport", airport_SA3 = "Alice Springs",
+             airport_influence_type = "none")
+
+airport_area(airport_name = "Ballina Airport", airport_SA3 = "Richmond Valley - Coastal",
+             airport_influence_type = "none")
+
+airport_area(airport_name = "Brisbane Airport", airport_SA3 = "Nundah",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Greater Brisbane")
+
+airport_area(airport_name = "Cairns Airport", airport_SA3 = "Cairns - North",
+             airport_influence_type = "SA4_NAME16", airport_influence_value = "Cairns")
+
+airport_area(airport_name = "Canberra Airport", airport_SA3 = "Canberra East",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Australian Capital Territory")
+
+airport_area(airport_name = "Darwin Airport", airport_SA3 = "Darwin City",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Greater Darwin")
+
+airport_area(airport_name = "Gold Coast Airport", airport_SA3 = "Coolangatta",
+             airport_influence_type = "SA4_NAME16", airport_influence_value = "Gold Coast")
+
+airport_area(airport_name = "Hobart Airport", airport_SA3 = "Hobart - North East",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Greater Hobart")
+
+airport_area(airport_name = "Karratha Airport", airport_SA3 = "West Pilbara",
+             airport_influence_type = "none")
+
+airport_area(airport_name = "Launceston Airport", airport_SA3 = "North East",
+             airport_influence_type = "SA4_NAME16", airport_influence_value = "Launceston and North East")
+
+airport_area(airport_name = "Mackay Airport", airport_SA3 = "Mackay",
+             airport_influence_type = "SA4_NAME16", airport_influence_value = "Mackay - Isaac - Whitsunday")
+
+airport_area(airport_name = "Melbourne Airport", airport_SA3 = "Tullamarine - Broadmeadows",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Greater Melbourne")
+
+airport_area(airport_name = "Newcastle Airport", airport_SA3 = "Port Stephens",
+             airport_influence_type = "SA4_NAME16", airport_influence_value = "Newcastle and Lake Macquarie")
+
+airport_area(airport_name = "Perth Airport", airport_SA3 = "Belmont - Victoria Park",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Greater Perth")
+
+airport_area(airport_name = "Proserpine Airport", airport_SA3 = "Whitsunday",
+             airport_influence_type = "none")
+
+airport_area(airport_name = "Rockhampton Airport", airport_SA3 = "Rockhampton",
+             airport_influence_type = "none")
+
+airport_area(airport_name = "Sunshine Coast Airport", airport_SA3 = "Maroochy",
+             airport_influence_type = "SA4_NAME16", airport_influence_value = "Sunshine Coast")
+
+airport_area(airport_name = "Sydney Airport", airport_SA3 = "Botany",
+             airport_influence_type = "GCC_NAME16", airport_influence_value = "Greater Sydney")
+
+airport_area(airport_name = "Townsville Airport", airport_SA3 = "Townsville",
+             airport_influence_type = "SA4_NAME16", airport_influence_value = "Townsville")
+
+```
+
+
+
 
 # Time trends 2009+
 
