@@ -108,7 +108,7 @@ sql <- "SELECT * FROM `twitter-stream-205107.twitter_stream.twitter_ABS_month_SA
 
 tb <- bq_project_query(project, sql)
 
-twitter_ABS_month_SA3 <- bq_table_download(tb, bigint = "integer64")
+twitter_ABS_month_SA3 <- bq_table_download(tb)
 
 saveRDS(twitter_ABS_month_SA3, file = "./data/Twitter/clean/twitter_ABS_month_SA3.rds")
 
@@ -838,3 +838,24 @@ tweets_clean_2019_07_22 %>%
   scale_x_date(date_breaks = "1 month", date_minor_breaks = "1 week") + 
   theme_minimal()
 ```
+
+<!-- ------------------------------------------------------------ --> 
+# Aggregates from Alex
+
+Processed data including:
+
+- `tweets` - total number
+- `distinct_users` - distinct users over the month
+- `avg_distinct_daily_users` - average number of distinct users from each day
+
+
+```{r}
+twitter_ABS_month_SA3 <- readRDS("./data/Twitter/clean/twitter_ABS_month_SA3.rds")
+
+twitter_ABS_month_SA3 %>% 
+  ggplot(aes(x = month, y = distinct_users, group = SA3_NAME_2016)) +
+  geom_line() + 
+  theme_light() + 
+  ylab("Distinct Twitter users") + xlab("")
+```
+
