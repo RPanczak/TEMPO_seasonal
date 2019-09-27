@@ -77,6 +77,21 @@ airport_2018 <- airport %>%
          int_out, int_out_t, int_out_p)
 ```
 
+## Additional info 
+
+### Newcastle 
+
+Newcastle is pretty much domestic traffic only. There is some traffic at the end of 2018 though. Accoridng to [wiki](https://en.wikipedia.org/wiki/Newcastle_Airport_(New_South_Wales)#Overview):
+
+*In July 2018 a route between Newcastle and Auckland was announced. It was the only international route operating through Newcastle since 2001. The route, operated by Virgin Australia will be for a limited time, during peak holiday periods. The service will operate three times per week between 22 November 2018 and 17 February 2019. It is expected that if the route is successful, it will continue on a more permanent basis.[6] The airport is leased from the Federal Government for civilian air travel until 2045.[7]*
+
+### Sunshine Coast Airport
+
+Similarly, Sunshine coast has some [temporary international traffic](https://en.wikipedia.org/wiki/Sunshine_Coast_Airport):
+
+*In addition, Air New Zealand serves the city seasonally, with three weekly return flights from Maroochydore to Auckland.*
+
+
 # Airport locations
 
 ## Point
@@ -336,14 +351,16 @@ airport_2018 %>%
 
 ```
 
-Clearer trends without two last months from Newcastle
+Clearer trends if Newcastle, Sunshine Coast & Townsville are treated as domestic only
 
 ```{r}
 airport_2018 %>% 
-  filter(!(airport == "Newcastle Airport" & date >= ymd("2018-11-01"))) %>%
   gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
   separate(type, sep = "_", c("source", "bound", "measure")) %>% 
   filter(measure == "p") %>% 
+  filter(!(airport == "Newcastle Airport" & source == "int")) %>%
+  filter(!(airport == "Sunshine Coast Airport" & source == "int")) %>%
+  filter(!(airport == "Townsville Airport" & source == "int")) %>%
   ggplot(aes(x = date, y = passengers, colour = source, linetype = bound)) +
   geom_line() + 
   facet_wrap(~airport, scales = "fixed") +
