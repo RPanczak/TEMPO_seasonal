@@ -1,0 +1,138 @@
+---
+title: "Combining data sources"
+# subtitle: 
+# author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    highlight: pygments
+    keep_md: no
+    # number_sections: yes
+    theme: united
+    # toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE, 
+                      fig.width=9, fig.height=7, out.width="900px", out.height="700px", dpi=300)
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, readr, readxl, magrittr, 
+       naniar, janitor, scales, lubridate,  
+       skimr, sjmisc, kableExtra, 
+       sf, tmap, tmaptools)
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# ABS
+
+## Pop present
+
+```{r include=FALSE}
+pop_present_au_18_long <- 
+  readRDS("./Data/ABS/pop_present_month.Rds") %>% 
+  select(-end) %>% 
+  rename(date = start)
+
+write_csv(pop_present_au_18_long, "data/model_input/pop_present_au_18_long.csv")
+
+# pop_present_au_18_wide <- 
+#   pop_present_au_18_long %>% 
+#   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+#   # mutate(SA3_CODE16 = NA, SA3_NAME16 = "") %>% 
+#   dplyr::select(-date) %>% 
+#   pivot_wider(names_from = month, values_from = mean_month_pop_present)
+# 
+# write_csv(pop_present_au_18_wide, "data/model_input/pop_present_au_18_wide.csv")
+```
+
+```{r}
+summary(pop_present_au_18_long)
+```
+
+## ERP
+
+```{r include=FALSE}
+erp_sa3_18_long <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds") %>% 
+  group_by(sa3_code, sa3_name) %>% 
+  summarise(erp = sum(ERP_18)) %>% 
+  ungroup() %>% 
+  rename(SA3_CODE16 = sa3_code, SA3_NAME16 = sa3_name) %>% 
+  mutate(date = ymd("2018-06-30")) %>% 
+  select(date, everything())
+
+write_csv(erp_sa3_18_long, "data/model_input/erp_sa3_18_long.csv")
+
+# erp_sa3_18_wide <- 
+#   erp_sa3_18_long %>% 
+#   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+#   select(-date) %>% 
+#   pivot_wider(names_from = month, values_from = erp)
+# 
+# write_csv(erp_sa3_18_wide, "data/model_input/erp_sa3_18_wide.csv")
+```
+
+```{r}
+summary(erp_sa3_18_long)
+```
+
+# Airbnb
+
+Using (maximum) number of guest nights occupied (GNO).
+
+```{r include=FALSE}
+airbnb_sa3_18_long <- 
+  readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/airdna/clean/airbnb_sa3_18.rds") %>% 
+  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno) %>% 
+  dplyr::rename(date = reporting_month, airbnb_gno = max_gno)
+
+write_csv(airbnb_sa3_18_long, "data/model_input/airbnb_sa3_18_long.csv")
+
+# airbnb_sa3_18_wide <- 
+#   airbnb_sa3_18_long %>% 
+#   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+#   select(-date) %>% 
+#   pivot_wider(names_from = month, values_from = airbnb_gno)
+# 
+# write_csv(airbnb_sa3_18_wide, "data/model_input/airbnb_sa3_18_wide.csv")
+```
+
+```{r}
+summary(airbnb_sa3_18_long)
+```
+
+# HomeAway
+
+Using (maximum) number of guest nights occupied (GNO).
+
+```{r include=FALSE}
+ha_sa3_18_long <- 
+  readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/ha/clean/ha_sa3_18.rds") %>% 
+  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno) %>% 
+  dplyr::rename(date = reporting_month, ha_gno = max_gno)
+
+write_csv(ha_sa3_18_long, "data/model_input/ha_sa3_18_long.csv")
+
+# ha_sa3_18_wide <- ha_sa3_18_long %>% 
+#   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+#   select(-date) %>% 
+#   pivot_wider(names_from = month, values_from = ha_gno)
+# 
+# write_csv(ha_sa3_18_wide, "data/model_input/ha_sa3_18_wide.csv")
+```
+
+```{r}
+summary(ha_sa3_18_long)
+```
+
