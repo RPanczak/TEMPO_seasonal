@@ -30,63 +30,16 @@ set.seed(12345)
 library(pacman) 
 p_load(tidyverse, readr, readxl, lubridate, 
        scales, janitor, kableExtra, 
-       visdat,
-       sf, tmap, tmaptools)
+       visdat)
 
 tmap_mode("view")
-
-SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
-  mutate(SA3_CODE16 = as.numeric(SA3_CODE16)) %>% 
-  rename(sa3_code16 = SA3_CODE16) %>% 
-  select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
-
-```
-
-
-```{r geodata_prep, eval=FALSE}
-p_load(rmapshaper)
-
-# postcode outlines 
-# exclude 'No usual address (Aust.)' 
-# exclude 'Migratory - Offshore - Shipping (Aust.)'
-
-POA <- sf::read_sf("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/1270055003_poa_2016_aust_shape/POA_2016_AUST.shp") %>% 
-  filter(POA_CODE16 != "9494") %>% 
-  filter(POA_CODE16 != "9797") %>% 
-  select(-POA_NAME16, -AREASQKM16) %>% 
-  st_transform(3112)
-
-POA_clean <- ms_simplify(POA, keep = 0.05, weighting = 0.7) # default settings
-
-saveRDS(POA_clean, file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/POA_2016_AUST_clean.rds")
-
-# print(object.size(POA), units = "MB")
-# print(object.size(POA_clean), units = "MB")
-
-```
-
-```{r}
-POA <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/POA_2016_AUST_clean.rds")
-
-# table(POA$POA_CODE16 == POA$POA_NAME16)
-
-# class(POA)
-# nrow(POA)
-# names(POA)
-# st_crs(POA)
-# str(POA)
-# format(object.size(POA), units = "Mb")
-
-POA_centr <- POA %>% 
-  st_centroid()
-
-# qtm(POA_centr)
 ```
 
 <!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
 
 # Population present
+
 ```{r}
 pop_present <- readxl::read_xls("./Data/ABS/Present Population OAD and Natural Increase.xls", 
                                 sheet = "Daily Population Present", 
@@ -94,7 +47,8 @@ pop_present <- readxl::read_xls("./Data/ABS/Present Population OAD and Natural I
   clean_names() %>%
   remove_empty(c("rows", "cols")) %>%
   dplyr::select(-x1, -x9, -natural_increase, -days_in_quarter, -daily_change_in_erp) %>% 
-  dplyr::rename(date = x2) 
+  dplyr::rename(date = x2) %>% 
+  dplyr::mutate(date = ymd(date))
 
 saveRDS(pop_present, "./Data/ABS/pop_present.Rds")
 
@@ -103,18 +57,20 @@ pop_present_month <- pop_present %>%
   mutate(start = floor_date(date, unit = "month"),
          end = ceiling_date(date, unit = "month", change_on_boundary = TRUE) - days(1)) %>% 
   group_by(start, end) %>% 
-  summarize(daily_physically_present = mean(daily_physically_present))
+  summarize(mean_month_pop_present = mean(daily_physically_present)) %>% 
+  ungroup()
   
 saveRDS(pop_present_month, "./Data/ABS/pop_present_month.Rds")
 ```
 
 ```{r}
-pop_present %>% 
-  ggplot(aes(x=date, y=daily_physically_present)) +
-  geom_segment(data = pop_present_month, 
-               aes(x=start, xend=end, yend=daily_physically_present)) +
-  geom_line(size = 1, colour = "darkorchid4") +
-  scale_x_datetime(date_breaks = "2 months", date_minor_breaks = "1 month") + 
+ggplot() +
+  geom_line(data = pop_present,
+         aes(x=date, y=daily_physically_present), 
+         size = 1, colour = "darkorchid4") +
+  geom_segment(data = pop_present_month,
+               aes(x=start, xend=end, y=mean_month_pop_present, yend=mean_month_pop_present)) +
+  scale_x_date(date_breaks = "2 months", date_minor_breaks = "1 month") + 
   theme_minimal() + xlab("") + ylab("Daily physically present")
 ```
 
