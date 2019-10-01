@@ -87,6 +87,18 @@ write_csv(erp_sa3_18_long, "data/model_input/erp_sa3_18_long.csv")
 summary(erp_sa3_18_long)
 ```
 
+# BITRE
+
+```{r}
+bitre_airport_18_long <- readRDS("data/BITRE/clean/airport_2018.Rds")
+
+write_csv(bitre_airport_18_long, "data/model_input/bitre_airport_18_long.csv")
+```
+
+```{r}
+summary(bitre_airport_18_long)
+```
+
 # Airbnb
 
 Using (maximum) number of guest nights occupied (GNO).
