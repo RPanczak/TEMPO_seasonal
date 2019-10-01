@@ -37,43 +37,45 @@ tmap_mode("view") # makes map interactive
 
 
 ```{r geodata_prep, eval=FALSE, include=FALSE}
-library(rmapshaper)
+p_load(rmapshaper)
 
 # postcode outlines 
 # exclude 'No usual address (Aust.)' 
 # exclude 'Migratory - Offshore - Shipping (Aust.)'
 
-POA <- sf::read_sf(here("data", "geo", "1270055003_poa_2016_aust_shape", "POA_2016_AUST.shp")) %>% 
+POA <- sf::read_sf(here::here("data", "geo", "1270055003_poa_2016_aust_shape", "POA_2016_AUST.shp")) %>% 
   filter(POA_CODE16 != "9494") %>% 
-  filter(POA_CODE16 != "9797") 
+  filter(POA_CODE16 != "9797") %>% 
+  select(-AREASQKM16, -POA_NAME16)
 
 # table(POA$POA_CODE16 == POA$POA_NAME16)
-POA$POA_NAME16 <- NULL
 
-class(POA); nrow(POA); names(POA); st_crs(POA); str(POA)
-format(object.size(POA), units = "Mb")
+class(POA); names(POA); st_crs(POA); str(POA)
 
 # View(POA)
 # qtm(POA)
 
 POA_centr <- st_centroid(POA, of_largest_polygon = TRUE)
 qtm(POA_centr)
-saveRDS(POA_centr, file = here("data", "geo", "POA_2016_AUST_centr.rds"))
+saveRDS(POA_centr, file = here::here("data", "geo", "POA_2016_AUST_centr.rds"))
 
-POA_simp <- ms_simplify(POA, keep = 0.15, weighting = 0.75) # default settings
+POA_clean <- ms_simplify(POA, keep = 0.15, weighting = 0.75) # default settings
 
-format(object.size(POA_simp), units = "Mb")
-nrow(POA_simp)
-qtm(POA_simp)
+format(object.size(POA), units = "Mb"); format(object.size(POA_clean), units = "Mb")
+nrow(POA); nrow(POA_clean)
+qtm(POA_clean)
 
-# sf::write_sf(POA_simp, here("data", "geo", "POA_2016_AUST_simp.shp"), delete_layer = TRUE)
-saveRDS(POA_simp, file = here("data", "geo", "POA_2016_AUST_simp.rds"))
+# sf::write_sf(POA_clean, here("data", "geo", "POA_2016_AUST_clean.shp"), delete_layer = TRUE)
+saveRDS(POA_clean, file = here::here("data", "geo", "POA_2016_AUST_clean.rds"))
 ```
 
 
 ```{r geodata_load, include=FALSE}
-POA_simp <- readRDS(file = here("data", "geo", "POA_2016_AUST_simp.rds"))
+POA_clean <- readRDS(file = here("data", "geo", "POA_2016_AUST_clean.rds"))
 POA_centr <- readRDS(file = here("data", "geo", "POA_2016_AUST_centr.rds"))
+
+SA3 <- readRDS("Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/geo/SA3_2016_AUST_clean.rds") %>% 
+  select(-AREASQKM16, -starts_with("SA4"), -starts_with("GCC"))
 ```
 
 
@@ -447,7 +449,7 @@ facebook_slice_2018_12 %>%
 #### Postcodes around Townsville 
 
 ```{r}
-POA_simp %>% 
+POA_clean %>% 
   filter(POA_CODE16 >= 4810 & POA_CODE16 <= 4818) %>% 
   filter(POA_CODE16 != 4816) %>% 
   qtm(borders = "red", text = "POA_CODE16", fill = NULL)
@@ -504,16 +506,24 @@ facebook_slice_2018_12 %>%
 
 #### Postcodes around Noosa
 
+Not a great overlap with SA3!
+
 ```{r}
-POA_simp %>% 
+POA_clean %>% 
   filter(POA_CODE16 %in% c("4565", "4566", "4567", "4573")) %>% 
-  qtm(borders = "red", text = "POA_CODE16", fill = NULL)
+  tm_shape() +
+  tm_fill(col = "POA_CODE16", alpha = 0.5, id = "POA_CODE16") +  
+  tm_shape(filter(SA3, SA3_NAME16 =="Noosa")) +
+  tm_borders()
 ```
+
+Problems in few places!
 
 ```{r}
 facebook_noosa <- facebook_slice %>% 
   # filter(date == ymd("2019-01-24")) %>% 
-  filter(date >= ymd("2019-01-01")) %>%
+  # filter(date >= ymd("2019-01-01")) %>%
+  filter(date >= ymd("2018-12-21")) %>%
   # filter(date < ymd("2019-02-01")) %>% 
   filter(age_group != "18-65+") %>% 
   filter(location_type == "recently") %>%
@@ -530,7 +540,10 @@ facebook_noosa <- facebook_slice %>%
   filter(row_number()==1) %>% 
   ungroup()
 
-
+facebook_noosa %>% 
+  ggplot(aes(x=date, y=pop)) +
+  geom_line() + 
+  theme_minimal() + xlab("") 
 ```
 
 
