@@ -18,7 +18,10 @@ output:
 <!-- ------------------------------------------------------------ --> 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width=8, fig.height=6, dpi=300, out.width="800px", out.height="600px")
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
+                      fig.width=9, fig.height=7, dpi=300, out.width="900px", out.height="700px")
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 
 options(scipen=999)
 set.seed(12345)
@@ -499,9 +502,36 @@ facebook_slice_2018_12 %>%
 ```
 
 
+#### Postcodes around Noosa
+
+```{r}
+POA_simp %>% 
+  filter(POA_CODE16 %in% c("4565", "4566", "4567", "4573")) %>% 
+  qtm(borders = "red", text = "POA_CODE16", fill = NULL)
+```
+
+```{r}
+facebook_noosa <- facebook_slice %>% 
+  # filter(date == ymd("2019-01-24")) %>% 
+  filter(date >= ymd("2019-01-01")) %>%
+  # filter(date < ymd("2019-02-01")) %>% 
+  filter(age_group != "18-65+") %>% 
+  filter(location_type == "recently") %>%
+  filter(gender == "both") %>%
+  select(-gender) %>% 
+  droplevels() %>% 
+  filter(postcode %in% c("4565", "4566", "4567", "4573")) %>% 
+  group_by(slice_id) %>% 
+  mutate(slice_count = n()) %>% 
+  filter(slice_count == 10) %>% 
+  ungroup() %>% 
+  group_by(date) %>% 
+  mutate(pop = sum(estimated_dau)) %>% 
+  filter(row_number()==1) %>% 
+  ungroup()
 
 
-
+```
 
 
 
