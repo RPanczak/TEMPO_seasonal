@@ -59,7 +59,7 @@ Removed observations with region codes like: `Not asked`, `Offshore and Migrator
 `SA3`s from Other Teritories were removed. 
 
 ```{r include=FALSE}
-destinations <- read_csv("data/IVS/raw/Stopover SA2, Quarter in year and Main reason for trip.csv", skip = 11) %>% 
+destination <- read_csv("data/IVS/raw/Stopover SA2, Quarter in year and Main reason for trip.zip", skip = 11) %>% 
   clean_names() %>%
   remove_empty(c("rows", "cols")) %>% 
   rename(SA2_NAME16 = stopover_state_region_sa2,
@@ -93,15 +93,15 @@ destinations <- read_csv("data/IVS/raw/Stopover SA2, Quarter in year and Main re
 Median values of guest nights per quarter per reason:
 
 ```{r}
-temp <- destinations %>% 
+temp <- destination %>% 
   group_by(main_reason_for_trip, quarter_in_year) %>% 
-  summarize(median = median(visitor_nights))
+  summarize(sum = sum(visitor_nights))
 
 temp %>% 
   filter(! main_reason_for_trip %in% c("Other reason")) %>%
-  ggplot(aes(x = quarter_in_year, y = median, 
+  ggplot(aes(x = quarter_in_year, y = sum, 
              group = main_reason_for_trip, colour = main_reason_for_trip)) + 
   geom_line() +
   theme_light() +
-  labs(x = "", y = "Median GN", colour = "Stopover reason")
+  labs(x = "", y = "Sum GN", colour = "Stopover reason")
 ```
