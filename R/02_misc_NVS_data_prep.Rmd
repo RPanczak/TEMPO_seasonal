@@ -111,21 +111,20 @@ There are `r comma(nrow(temp))` locations that do not link to the full list of `
 slice(temp)
 ```
 
-Median values of guest nights per month per reason:
+Sum of values of guest nights from all areas, per month per reason:
 
 ```{r}
 temp <- origin %>% 
   group_by(stopover_reason, month) %>% 
-  summarize(median = median(visitor_nights))
+  summarize(sum = sum(visitor_nights))
 
 temp %>% 
   filter(! stopover_reason %in% c("No other reason", "Not stated/not asked",
                                   "In transit", "Other reason")) %>% 
-  ggplot(aes(x = month, y = median, group = stopover_reason, colour = stopover_reason)) + 
+  ggplot(aes(x = month, y = sum, group = stopover_reason, colour = stopover_reason)) + 
   geom_line() +
   theme_light() +
-  scale_y_continuous(limits = c(0, 60)) +
-  labs(x = "", y = "Median GN", colour = "Stopover reason")
+  labs(x = "", y = "Sum GN", colour = "Stopover reason")
 ```
 
 <!-- ------------------------------------------------------------ --> 
@@ -176,31 +175,32 @@ Again, there are `r comma(nrow(temp))` locations that do not link to the full li
 slice(temp)
 ```
 
-Median values of guest nights per month per reason:
+Individual values for `Holiday` travellers 
 
 ```{r}
-temp <- destination %>% 
-  group_by(stopover_reason, month) %>% 
-  summarize(median = median(visitor_nights))
-
-temp %>% 
-  filter(! stopover_reason %in% c("No other reason", "Not stated/not asked",
-                                  "In transit", "Other reason")) %>% 
-  ggplot(aes(x = month, y = median, group = stopover_reason, colour = stopover_reason)) + 
-  geom_line() +
-  scale_y_continuous(limits = c(0, 60)) +
-  theme_light() +
-  labs(x = "", y = "Median GN", colour = "Stopover reason")
-
-```
-
-```{r eval=FALSE, include=FALSE}
 destination %>% 
   filter(stopover_reason %in% c("Holiday")) %>% 
   ggplot(aes(x = month, y = visitor_nights, group = SA3_CODE16)) + 
   geom_line(alpha = 0.5) +
   theme_light() +
-  labs(x = "", y = "Median GN", colour = "Stopover reason")
+  labs(x = "", y = "GN")
+```
+
+Sum of values of guest nights from all areas, per month per reason:
+
+```{r}
+temp <- destination %>% 
+  group_by(stopover_reason, month) %>% 
+  summarize(sum = sum(visitor_nights))
+
+temp %>% 
+  filter(! stopover_reason %in% c("No other reason", "Not stated/not asked",
+                                  "In transit", "Other reason")) %>% 
+  ggplot(aes(x = month, y = sum, group = stopover_reason, colour = stopover_reason)) + 
+  geom_line() +
+  theme_light() +
+  labs(x = "", y = "Sum GN", colour = "Stopover reason")
+
 ```
 
 ```{r eval=FALSE, include=FALSE}
@@ -211,6 +211,7 @@ temp <- destination %>%
 
 mvtsplot(temp, norm = "global")
 ```
+
 
 <!-- ------------------------------------------------------------ --> 
 
@@ -445,7 +446,7 @@ write_csv(OD_01_bd, "data/NVS/clean/kepler_jan.csv")
 
 <!-- ------------------------------------------------------------ --> 
 
-# Net
+# Net (using agg data)
 
 ```{r}
 SA3_net <- SA3 %>% 
@@ -454,7 +455,7 @@ SA3_net <- SA3 %>%
       left_join(
         rename(destination, destination =  visitor_nights)
       ) %>% 
-      mutate(net = origin - destination) %>% 
+      mutate(net = destination - origin) %>% 
       select(-origin, -destination))
 
 # summary(SA3_net$net)
@@ -515,3 +516,38 @@ SA3_net %>%
   tm_polygons("net", n = 7, palette = "RdYlBu", id = "SA3_NAME16") +
   tm_facets(by = "month")
 ```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Net (using OD data)
+
+Advantage here is removing visitor nights from/to the same region
+
+```{r}
+OD_01 %>% 
+  filter(SA3_CODE16_ORIG == SA3_CODE16_DEST) %>% 
+  filter(visitor_nights > 0) %>% 
+  summarise(sum_visitor_nights = sum(visitor_nights))
+```
+
+
+```{r}
+OD_01 %>% 
+  filter(SA3_CODE16_ORIG == SA3_CODE16_DEST) %>% 
+  filter(visitor_nights > 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = visitor_nights))
+```
+
+```{r}
+OD_01 %>% 
+  filter(SA3_CODE16_ORIG != SA3_CODE16_DEST) %>% 
+  group_by(SA3_CODE16_ORIG, SA3_NAME16_ORIG) %>% 
+  summarise(origin = sum(visitor_nights))
+
+OD_01 %>% 
+  filter(SA3_CODE16_ORIG != SA3_CODE16_DEST) %>% 
+  group_by(SA3_CODE16_DEST, SA3_NAME16_DEST) %>% 
+  summarise(dest = sum(visitor_nights))
+```
+
