@@ -97,6 +97,21 @@ saveRDS(SA3_centr, file = "./data/geo/SA3_centr.rds")
 p_unload(rmapshaper)
 ```
 
+```{r}
+SA3 <- readRDS(file = "./data/geo/SA3_2016_AUST.rds")
+# SA3_centr <- readRDS(file = "./data/geo/SA3_centr.rds")
+
+pop_sa1 <- read_csv("data/ABS/2016 Census GCP Statistical Area 1 for AUST/2016Census_G01_AUS_SA1.csv.gz") %>% 
+  select(SA1_7DIGITCODE_2016, Tot_P_P) %>% 
+  rename(SA1_7DIG16 = SA1_7DIGITCODE_2016,
+         pop_16 = Tot_P_P)
+
+SA1 <- st_read("./data/geo/1270055001_sa1_2016_aust_shape/SA1_2016_AUST.shp", 
+               stringsAsFactors = FALSE) %>% 
+  st_drop_geometry() %>% 
+  select(SA1_MAIN16, SA3_CODE16, SA3_NAME16) %>% 
+  mutate(SA1_MAIN16 = as.numeric(SA1_MAIN16))
+```
 
 <!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
@@ -275,8 +290,8 @@ Data from https://datapacks.censusdata.abs.gov.au/datapacks/
 ## POA
 
 ```{r}
-pop_POA <- read_csv("Data/ABS/2016 Census GCP Postal Areas for AUST/2016Census_G04A_AUS_POA.csv") %>% 
-  left_join(read_csv("Data/ABS/2016 Census GCP Postal Areas for AUST/2016Census_G04B_AUS_POA.csv")) %>% 
+pop_POA <- read_csv("data/ABS/2016 Census GCP Postal Areas for AUST/2016Census_G04A_AUS_POA.csv.gz") %>% 
+  left_join(read_csv("data/ABS/2016 Census GCP Postal Areas for AUST/2016Census_G04B_AUS_POA.csv.gz")) %>% 
   select(-ends_with("_F"), -ends_with("_M")) %>% 
   select(POA_CODE_2016, Age_yr_18_P, Age_yr_19_P, matches("(Age_yr_\\d\\d_\\d\\d_P)"), Age_yr_100_yr_over_P, Tot_P) %>% 
   select(-Age_yr_10_14_P, -Age_yr_15_19_P) %>% 
@@ -305,8 +320,8 @@ POA_centr %>%
 ## SA3 
 
 ```{r}
-pop_SA3 <- read_csv("data/ABS/2016 Census GCP Statistical Area 3 for AUST/2016Census_G04A_AUS_SA3.csv") %>% 
-  left_join(read_csv("data/ABS/2016 Census GCP Statistical Area 3 for AUST/2016Census_G04B_AUS_SA3.csv")) %>% 
+pop_SA3 <- read_csv("data/ABS/2016 Census GCP Statistical Area 3 for AUST/2016Census_G04A_AUS_SA3.csv.gz") %>% 
+  left_join(read_csv("data/ABS/2016 Census GCP Statistical Area 3 for AUST/2016Census_G04B_AUS_SA3.csv.gz")) %>% 
   select(-ends_with("_F"), -ends_with("_M")) %>% 
   select(SA3_CODE_2016, Age_yr_18_P, Age_yr_19_P, matches("(Age_yr_\\d\\d_\\d\\d_P)"), Age_yr_100_yr_over_P, Tot_P) %>% 
   select(-Age_yr_10_14_P, -Age_yr_15_19_P) %>% 
@@ -337,6 +352,90 @@ POA_centr %>%
 
 # Remotness
 
+Again, data on SA1 level. Recalculated to majority usung population weights.
+
+```{r include=FALSE}
+remote <- read_csv("data/ABS/1270055005_ra_2016_aust_csv/RA_2016_AUST.zip", 
+                   col_types = cols(AREA_ALBERS_SQKM = col_skip(), 
+                                    MB_CODE_2016 = col_skip(), RA_CODE_2016 = col_integer(), 
+                                    STATE_CODE_2016 = col_skip(), STATE_NAME_2016 = col_skip())) %>% 
+  # group_by(SA1_MAINCODE_2016, RA_NAME_2016) %>% 
+  # mutate(n1 = n()) %>% 
+  # ungroup() %>% 
+  # group_by(SA1_MAINCODE_2016) %>% 
+  # mutate(n2 = n()) %>% 
+  # ungroup() %>% 
+  # filter(n1 != n2)
+  rename(SA1_MAIN16 = SA1_MAINCODE_2016,
+         SA1_7DIG16 = SA1_7DIGITCODE_2016) %>% 
+  group_by(SA1_MAIN16) %>% 
+  filter(row_number()==1) %>% 
+  ungroup() %>% 
+  filter(!str_detect(RA_NAME_2016, "Migratory - Offshore - Shipping")) %>% 
+  filter(!str_detect(RA_NAME_2016, "No usual address"))
+
+remote %<>% 
+  left_join(pop_sa1) %>% 
+  left_join(SA1)
+
+remote %<>% 
+  rename(pop_sa1_16 = pop_16) %>% 
+  group_by(SA3_CODE16) %>% 
+  mutate(pop_sa3_16 = sum(pop_sa1_16)) %>% 
+  ungroup() 
+```
+
+Original data
+
+```{r}
+remote %>% 
+  frq(RA_NAME_2016)
+```
+
+SA3 assigned to majority
+
+```{r}
+remote_ra <- 
+  remote %>% 
+  group_by(SA3_CODE16, RA_CODE_2016) %>% 
+  mutate(pop_sa3_16_cat = sum(pop_sa1_16)) %>% 
+  ungroup() %>% 
+  mutate(pop_sa3_16_s = pop_sa3_16_cat/pop_sa3_16) %>% 
+  arrange(SA3_CODE16, desc(pop_sa3_16_s)) %>% 
+  group_by(SA3_CODE16, RA_CODE_2016) %>%
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  select(-SA1_MAIN16, -SA1_7DIG16, -pop_sa1_16) %>% 
+  select(SA3_CODE16, SA3_NAME16, everything())
+
+remote_ra_one <- 
+  remote_ra %>% 
+  group_by(SA3_CODE16) %>%
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  filter(! SA3_CODE16 %in% c(90101, 90102, 90104, 10803))
+```
+
+Share of majority category
+
+```{r}
+remote_ra_one %>% 
+  descr(pop_sa3_16_s)
+
+ggplot(remote_ra_one, aes(pop_sa3_16_s)) + 
+  geom_histogram() +
+  ylab("Number of SA3") + xlab("Share of majority category") + theme_minimal()
+```
+
+Map 
+
+```{r}
+SA3 %>% 
+  left_join(remote_ra_one) %>% 
+  tm_shape() + 
+  tm_polygons(col = "RA_NAME_2016", alpha = .5, border.col = NA, id = "SA3_NAME16")
+```
+
 
 <!-- ------------------------------------------------------------ --> 
 
@@ -361,18 +460,6 @@ urban <- read_csv("data/ABS/1270055004_sa1_ucl_sosr_sos_2016_aust_csv/raw/SA1_UC
   filter(!str_detect(SOSR_NAME_2016, "Migratory - Offshore - Shipping")) %>% 
   filter(!str_detect(SOSR_NAME_2016, "No usual address"))
 
-pop_sa1 <- read_csv("data/ABS/2016 Census GCP Statistical Area 1 for AUST/2016Census_G01_AUS_SA1.csv.gz") %>% 
-  select(SA1_7DIGITCODE_2016, Tot_P_P) %>% 
-  rename(SA1_7DIG16 = SA1_7DIGITCODE_2016,
-         pop_16 = Tot_P_P)
-
-SA1 <- st_read("./data/geo/1270055001_sa1_2016_aust_shape/SA1_2016_AUST.shp", 
-               stringsAsFactors = FALSE) %>% 
-  st_drop_geometry() %>% 
-  select(SA1_MAIN16, SA3_CODE16, SA3_NAME16) %>% 
-  mutate(SA1_MAIN16 = as.numeric(SA1_MAIN16))
-
-
 urban %<>% 
   left_join(pop_sa1) %>% 
   left_join(SA1)
@@ -384,7 +471,6 @@ urban %<>%
   ungroup() 
 
 rm(pop_sa1, SA1)
-
 ```
 
 ### Section of State Range (SOSR) 
@@ -419,15 +505,26 @@ urban_sosr_one <-
   filter(row_number() == 1) %>% 
   ungroup() %>% 
   filter(! SA3_CODE16 %in% c(90101, 90102, 90104, 10803))
+```
 
+Share of majority category
+
+```{r}
 urban_sosr_one %>% 
   descr(pop_sa3_16_s)
 
+ggplot(urban_sosr_one, aes(pop_sa3_16_s)) + 
+  geom_histogram() +
+  ylab("Number of SA3") + xlab("Share of majority category") + theme_minimal()
+```
+
+Map 
+
+```{r}
 SA3 %>% 
   left_join(urban_sosr_one) %>% 
   tm_shape() + 
   tm_polygons(col = "SOSR_NAME_2016", alpha = .5, border.col = NA, id = "SA3_NAME16")
-
 ```
 
 ### Section of State (SOS)
@@ -462,227 +559,25 @@ urban_sos_one <-
   filter(row_number() == 1) %>% 
   ungroup() %>% 
   filter(! SA3_CODE16 %in% c(90101, 90102, 90104, 10803))
+```
 
+Share of majority category
+
+```{r}
 urban_sos_one %>% 
   descr(pop_sa3_16_s)
 
+ggplot(urban_sos_one, aes(pop_sa3_16_s)) + 
+  geom_histogram() +
+  ylab("Number of SA3") + xlab("Share of majority category") + theme_minimal()
+```
+
+Map 
+
+```{r}
 SA3 %>% 
   left_join(urban_sos_one) %>% 
   tm_shape() + 
   tm_polygons(col = "SOS_NAME_2016", alpha = .5, border.col = NA, id = "SA3_NAME16")
-```
-
-
-<!-- ------------------------------------------------------------ --> 
-
-# Land use
-
-## Data
-
-Mesh block categories aggregated to SA3 using area.
-
-```{r}
-MB_2016 <- read_csv("data/MB/MB_2016_join.csv") %>% 
-  clean_names() %>%
-  remove_empty(c("rows", "cols")) %>% 
-  filter(ste_name16 != "Other Territories") %>% 
-  select(-objectid, -(sa1_main16:sa2_name16), -(sa4_code16:gcc_name16), 
-         -(objectid_1:area_albers_sqkm), -(state:shape_area))
-
-MB_2016_agg <- MB_2016 %>% 
-  filter(mb_cat16 != "Water") %>% 
-  group_by(sa3_code16, mb_cat16) %>% 
-  summarize(area_cat16 = sum(areasqkm16)) %>% 
-  ungroup() %>% 
-  group_by(sa3_code16) %>% 
-  mutate(area_tot = sum(area_cat16)) %>% 
-  ungroup() %>% 
-  mutate(area_cat16 = area_cat16 / area_tot) %>% 
-  select(-area_tot)
-
-MB_2016_agg_wide <- MB_2016_agg %>% 
-  spread(mb_cat16, area_cat16) %>% 
-  replace(is.na(.), 0) %>% 
-  select(-sa3_code16) %>% 
-  scale()
-```
-
-## Clustering 
-
-### kmeans
-
-```{r}
-p_load(cluster, factoextra, NbClust, clValid)
-```
-
-```{r eval=FALSE, include=FALSE}
-res.dist <- get_dist(MB_2016_agg_wide, stand = TRUE, method = "pearson")
-
-fviz_dist(res.dist, 
-          gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
-```
-
-```{r eval=FALSE, include=FALSE}
-fviz_nbclust(MB_2016_agg_wide, kmeans, k.max = 20, method = "silhouette")
-fviz_nbclust(MB_2016_agg_wide, kmeans, k.max = 20, method = "wss")
-fviz_nbclust(MB_2016_agg_wide, kmeans, k.max = 20, method = "gap_stat")
-
-km.res <- kmeans(MB_2016_agg_wide, 9, nstart = 25)
-```
-
-```{r}
-fviz_cluster(km.res, data = MB_2016_agg_wide, frame.type = "convex") +
-  theme_minimal()
-```
-
-```{r}
-MB_2016_agg_wide <- MB_2016_agg %>% 
-  spread(mb_cat16, area_cat16) %>% 
-  replace(is.na(.), 0)
-
-MB_2016_agg_wide$cluster <- km.res$cluster
-
-SA3 <- left_join(SA3, select(MB_2016_agg_wide, sa3_code16, cluster))
-
-SA3 %>% 
-  # filter(cluster == 9) %>% 
-  tm_shape() +
-  tm_polygons("cluster", palette = "Accent", style = "cat", n = 9,
-              title = "Clusters", id = "SA3_NAME16")
-
-temp <- MB_2016_agg_wide %>% 
-  gather(Commercial:Transport, key = "key", value = "value")
-
-temp %>% 
-  ggplot(aes(x = key, value)) + 
-  geom_boxplot(varwidth = TRUE) +
-  facet_wrap(~cluster) +
-  coord_flip() + 
-  theme_light()
-
-```
-
-
-### other
-
-```{r}
-MB_2016_agg_wide <- MB_2016_agg %>% 
-  spread(mb_cat16, area_cat16) %>% 
-  replace(is.na(.), 0) %>% 
-  select(-sa3_code16) %>% 
-  scale()
-
-pam.res <- pam(MB_2016_agg_wide, 9)
-
-fviz_cluster(pam.res) +
-  theme_minimal()
-```
-
-
-```{r}
-# hc_method = "ward.D2"
-res <- hcut(MB_2016_agg_wide, k = 9, stand = TRUE)
-
-fviz_dend(res, rect = TRUE, cex = 0.5, k_colors = c("#00AFBB","#2E9FDF", "#E7B800", "#FC4E07"))
-```
-
-```{r}
-res.nbclust <- NbClust(data = MB_2016_agg_wide, distance = "euclidean",
-                       min.nc = 2, max.nc = 20, 
-                       method = "complete", index ="all") 
-
-factoextra::fviz_nbclust(res.nbclust) + 
-  theme_minimal()
-```
-
-```{r}
-res.hc <- eclust(MB_2016_agg_wide, "hclust", k = 9, graph = FALSE) 
-fviz_silhouette(res.hc)
-```
-
-```{r}
-intern <- clValid(MB_2016_agg_wide, nClust = 2:20, 
-                  clMethods = c("hierarchical","kmeans","pam"),
-                  validation = "internal")
-# Summary
-summary(intern)
-
-p_unload(cluster, factoextra, NbClust, clValid)
-```
-
-### Mclust
-
-```{r}
-p_load(mclust)
-
-BIC <- mclustBIC(MB_2016_agg_wide, G=1:20)
-plot(BIC)
-summary(BIC)
-
-p_unload(mclust)
-```
-
-### VarSelLCM
-
-```{r}
-p_load(VarSelLCM)
-
-# Cluster analysis without variable selection
-res_without <- VarSelCluster(MB_2016_agg_wide, gvals = 1:20, vbleSelec = FALSE, crit.varsel = "BIC")
-
-summary(res_without)
-plot(res_without)
-
-# Cluster analysis with variable selection (with parallelisation)
-res_with <- VarSelCluster(MB_2016_agg_wide, gvals = 1:20, nbcores = 8, crit.varsel = "BIC")
-
-summary(res_with)
-print(res_with)
-
-coef(res_with)
-
-plot(res_with)
-
-plot(x = res_with, y = "Commercial")
-plot(x = res_with, y = "Education")
-plot(x = res_with, y = "Hospital/Medical")
-plot(x = res_with, y = "Industrial")
-plot(x = res_with, y = "Parkland")
-plot(x = res_with, y = "Primary Production")
-plot(x = res_with, y = "Residential")
-plot(x = res_with, y = "Transport")
-plot(x = res_with, y = "Other")
-
-plot(res_with, y = "Commercial", type = "cdf")
-
-
-temp <- MB_2016_agg %>% 
-  spread(mb_cat16, area_cat16) %>% 
-  replace(is.na(.), 0)
-
-temp$cluster <- fitted(res_with)
-
-SA3$cluster <- NULL
-
-SA3 <- left_join(SA3, select(temp, sa3_code16, cluster))
-
-table(SA3$cluster)
-
-tm_shape(SA3) +
-  tm_polygons("cluster", palette="Accent", style="cat", n=5,
-              title="Clusters", id="SA3_NAME16")
-
-temp <- temp %>% 
-  gather(Commercial:Transport, key = "key", value = "value")
-
-temp %>% 
-  ggplot(aes(x = key, value)) + 
-  geom_boxplot(varwidth = TRUE) +
-  facet_wrap(~cluster) +
-  coord_flip() + 
-  theme_light()
-
-p_unload(VarSelLCM)
-
 ```
 
