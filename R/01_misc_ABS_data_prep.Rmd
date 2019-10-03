@@ -352,7 +352,11 @@ POA_centr %>%
 
 # Remotness
 
-Again, data on SA1 level. Recalculated to majority usung population weights.
+Data are from *1270.0.55.005 - Australian Statistical Geography Standard (ASGS): Volume 5 - Remoteness Structure, July 2016* [info](https://www.abs.gov.au/AUSSTATS/abs@.nsf/DetailsPage/1270.0.55.005July%202016?OpenDocument).
+
+`No usual address` and `Migratory - Offshore - Shipping` categories are excluded. 
+
+Data are on SA1 level. Population of SA1 was used to find majority classification within each SA3.
 
 ```{r include=FALSE}
 remote <- read_csv("data/ABS/1270055005_ra_2016_aust_csv/RA_2016_AUST.zip", 
