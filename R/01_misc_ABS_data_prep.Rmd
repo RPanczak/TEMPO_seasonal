@@ -357,36 +357,119 @@ urban <- read_csv("data/ABS/1270055004_sa1_ucl_sosr_sos_2016_aust_csv/raw/SA1_UC
                                    STE_CODE_2016 = col_skip(), STE_NAME_2016 = col_skip())) %>% 
   rename(SA1_MAIN16 = SA1_MAINCODE_2016,
          SA1_7DIG16 = SA1_7DIGITCODE_2016) %>% 
-  select(-starts_with("UCL"), -SA1_7DIG16) %>% 
+  select(-starts_with("UCL")) %>% 
   filter(!str_detect(SOSR_NAME_2016, "Migratory - Offshore - Shipping")) %>% 
   filter(!str_detect(SOSR_NAME_2016, "No usual address"))
 
 pop_sa1 <- read_csv("data/ABS/2016 Census GCP Statistical Area 1 for AUST/2016Census_G01_AUS_SA1.csv.gz") %>% 
   select(SA1_7DIGITCODE_2016, Tot_P_P) %>% 
-  rename(SA1_7DIG16 = SA1_7DIGITCODE_2016)
+  rename(SA1_7DIG16 = SA1_7DIGITCODE_2016,
+         pop_16 = Tot_P_P)
 
-SA1 <- st_read("./data/geo/1270055001_sa1_2016_aust_shape/SA3_2016_AUST.shp", 
+SA1 <- st_read("./data/geo/1270055001_sa1_2016_aust_shape/SA1_2016_AUST.shp", 
                stringsAsFactors = FALSE) %>% 
-  st_drop
+  st_drop_geometry() %>% 
+  select(SA1_MAIN16, SA3_CODE16, SA3_NAME16) %>% 
+  mutate(SA1_MAIN16 = as.numeric(SA1_MAIN16))
 
-# View(SA3)
-# st_crs(SA3)
-# qtm(SA3)
-saveRDS(SA3, file = "./data/geo/SA3_2016_AUST.rds")
+
+urban %<>% 
+  left_join(pop_sa1) %>% 
+  left_join(SA1)
+
+urban %<>% 
+  rename(pop_sa1_16 = pop_16) %>% 
+  group_by(SA3_CODE16) %>% 
+  mutate(pop_sa3_16 = sum(pop_sa1_16)) %>% 
+  ungroup() 
+
+rm(pop_sa1, SA1)
+
 ```
 
 ### Section of State Range (SOSR) 
+
+Original data
 
 ```{r}
 urban %>% 
   frq(SOSR_NAME_2016)
 ```
 
-### Section of State (SOS)
+SA3 assigned to majority
 
 ```{r}
-filter(airbnb_sa1, reporting_month == as.Date("2019-02-01")) %>% 
+urban_sosr <- 
+  urban %>% 
+  select(-SOS_CODE_2016, -SOS_NAME_2016) %>% 
+  group_by(SA3_CODE16, SOSR_CODE_2016) %>% 
+  mutate(pop_sa3_16_cat = sum(pop_sa1_16)) %>% 
+  ungroup() %>% 
+  mutate(pop_sa3_16_s = pop_sa3_16_cat/pop_sa3_16) %>% 
+  arrange(SA3_CODE16, desc(pop_sa3_16_s)) %>% 
+  group_by(SA3_CODE16, SOSR_CODE_2016) %>%
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  select(-SA1_MAIN16, -SA1_7DIG16, -pop_sa1_16) %>% 
+  select(SA3_CODE16, SA3_NAME16, everything())
+
+urban_sosr_one <- 
+  urban_sosr %>% 
+  group_by(SA3_CODE16) %>%
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  filter(! SA3_CODE16 %in% c(90101, 90102, 90104, 10803))
+
+urban_sosr_one %>% 
+  descr(pop_sa3_16_s)
+
+SA3 %>% 
+  left_join(urban_sosr_one) %>% 
+  tm_shape() + 
+  tm_polygons(col = "SOSR_NAME_2016", alpha = .5, border.col = NA, id = "SA3_NAME16")
+
+```
+
+### Section of State (SOS)
+
+Original data
+
+```{r}
+urban %>% 
   frq(SOS_NAME_2016)
+```
+
+SA3 assigned to majority
+
+```{r}
+urban_sos <- 
+  urban %>% 
+  select(-SOSR_CODE_2016, -SOSR_NAME_2016) %>% 
+  group_by(SA3_CODE16, SOS_CODE_2016) %>% 
+  mutate(pop_sa3_16_cat = sum(pop_sa1_16)) %>% 
+  ungroup() %>% 
+  mutate(pop_sa3_16_s = pop_sa3_16_cat/pop_sa3_16) %>% 
+  arrange(SA3_CODE16, desc(pop_sa3_16_s)) %>% 
+  group_by(SA3_CODE16, SOS_CODE_2016) %>%
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  select(-SA1_MAIN16, -SA1_7DIG16, -pop_sa1_16) %>% 
+  select(SA3_CODE16, SA3_NAME16, everything())
+
+urban_sos_one <- 
+  urban_sos %>% 
+  group_by(SA3_CODE16) %>%
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  filter(! SA3_CODE16 %in% c(90101, 90102, 90104, 10803))
+
+urban_sos_one %>% 
+  descr(pop_sa3_16_s)
+
+SA3 %>% 
+  left_join(urban_sos_one) %>% 
+  tm_shape() + 
+  tm_polygons(col = "SOS_NAME_2016", alpha = .5, border.col = NA, id = "SA3_NAME16")
 ```
 
 
