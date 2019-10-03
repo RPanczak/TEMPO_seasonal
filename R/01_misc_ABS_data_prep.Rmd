@@ -190,7 +190,7 @@ Using file *'Released at 11.30am (Canberra time) 27 March 2019'*.
 
 ```{r}
 ERP_SA3_2018 <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds") %>% 
-  group_by(s_t_name,sa3_code, sa3_name) %>% 
+  group_by(s_t_name, sa3_code, sa3_name) %>% 
   summarise(ERP_18 = sum(ERP_18)) %>% 
   ungroup()
 ```
