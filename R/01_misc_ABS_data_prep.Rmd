@@ -30,10 +30,73 @@ set.seed(12345)
 library(pacman) 
 p_load(tidyverse, readr, readxl, lubridate, 
        scales, janitor, kableExtra, 
-       visdat)
+       sjmisc,
+       sf, tmap)
 
 tmap_mode("view")
 ```
+
+```{r geodata_prep, eval=FALSE}
+p_load(rmapshaper)
+
+# SA3 outlines
+SA3 <- st_read("./data/geo/1270055001_sa3_2016_aust_shape/SA3_2016_AUST.shp", 
+               stringsAsFactors = FALSE)
+# View(SA3)
+# st_crs(SA3)
+saveRDS(SA3, file = "./data/geo/SA3_2016_AUST.rds")
+
+# other teritories and zeroes
+SA3 %>% 
+  filter(SA4_CODE16 == 901)
+
+# Keeping Jervis bay in?
+# removing Lord Howe Island?
+SA3 %>% 
+  filter(SA3_CODE16 %in% c(90101, 90102, 90104, 10803))
+
+SA3 %>% 
+  filter(AREASQKM16 == 0)  
+
+SA3 %<>% 
+  # filter(SA4_CODE16 != 901) %>% 
+  filter(! SA3_CODE16 %in% c(90101, 90102, 90104, 10803)) %>% 
+  filter(AREASQKM16 != 0) %>% 
+  st_transform(3112) 
+
+nrow(SA3)
+
+SA3 <- ms_simplify(SA3, keep = 0.05, weighting = 0.7) # default settings
+# SA3 <- ms_simplify(SA3, keep = 0.04, weighting = 0.8) # bit more aggressive
+
+nrow(SA3)
+# qtm(SA3)
+
+saveRDS(SA3, file = "./data/geo/SA3_2016_AUST_clean.rds")
+
+# Mesh blocks of 'Blue Mountains - South' SA3 have 0 pops
+# replaced with 'normal' centroid
+
+SA3_centr <- read_csv("data/geo/SA3_2016_pop_center_median.zip") %>% 
+  select(-OBJECTID) %>% 
+  rename(lon = XCoord, 
+         lat = YCoord) %>% 
+  mutate(SA3_CODE16 = as.character(SA3_CODE16)) %>% 
+  right_join(select(st_drop_geometry(SA3), SA3_CODE16, SA3_NAME16)) %>% 
+  filter(! SA3_CODE16 %in% c(90101, 90102, 90104, 10803)) %>% 
+  mutate(lon = ifelse(SA3_CODE16 == "12402", 150.287952, lon)) %>% 
+  mutate(lat = ifelse(SA3_CODE16 == "12402", -33.993425, lat)) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>% 
+  st_transform(3112) %>% 
+  select(SA3_CODE16, everything())
+
+# qtm(SA3_centr)
+
+saveRDS(SA3_centr, file = "./data/geo/SA3_centr.rds")
+
+p_unload(rmapshaper)
+```
+
 
 <!-- ------------------------------------------------------------ --> 
 <!-- ------------------------------------------------------------ --> 
@@ -59,15 +122,15 @@ pop_present_month <- pop_present %>%
   group_by(start, end) %>% 
   summarize(mean_month_pop_present = mean(daily_physically_present)) %>% 
   ungroup()
-  
+
 saveRDS(pop_present_month, "./Data/ABS/pop_present_month.Rds")
 ```
 
 ```{r}
 ggplot() +
   geom_line(data = pop_present,
-         aes(x=date, y=daily_physically_present), 
-         size = 1, colour = "darkorchid4") +
+            aes(x=date, y=daily_physically_present), 
+            size = 1, colour = "darkorchid4") +
   geom_segment(data = pop_present_month,
                aes(x=start, xend=end, y=mean_month_pop_present, yend=mean_month_pop_present)) +
   scale_x_date(date_breaks = "2 months", date_minor_breaks = "1 month") + 
@@ -239,7 +302,6 @@ POA_centr %>%
   tm_bubbles("pop_cen_18plus", scale=.5)
 ```
 
-
 ## SA3 
 
 ```{r}
@@ -268,6 +330,63 @@ POA_centr %>%
   left_join(pop_SA3) %>% 
   tm_shape() +
   tm_bubbles("pop_cen_18plus", scale=.5)
+```
+
+
+<!-- ------------------------------------------------------------ --> 
+
+# Remotness
+
+
+<!-- ------------------------------------------------------------ --> 
+
+# Level of urbanization
+
+Data are from *1270.0.55.001 - Australian Statistical Geography Standard (ASGS): Volume 1 - Main Structure and Greater Capital City Statistical Areas, July 2016* [info](https://www.abs.gov.au/AUSSTATS/abs@.nsf/Lookup/1270.0.55.001Main+Features10018July%202016?OpenDocument)
+
+`No usual address` and `Migratory - Offshore - Shipping` categories are excluded. 
+
+Data are on SA1 level. Population of SA1 was used to find majority classification within each SA3.
+
+
+```{r include=FALSE}
+urban <- read_csv("data/ABS/1270055004_sa1_ucl_sosr_sos_2016_aust_csv/raw/SA1_UCL_SOSR_SOS_2016_AUST.zip", 
+                  col_types = cols(AREA_ALBERS_SQKM = col_skip(), 
+                                   SOSR_CODE_2016 = col_integer(), 
+                                   SOS_CODE_2016 = col_integer(), 
+                                   STE_CODE_2016 = col_skip(), STE_NAME_2016 = col_skip())) %>% 
+  rename(SA1_MAIN16 = SA1_MAINCODE_2016,
+         SA1_7DIG16 = SA1_7DIGITCODE_2016) %>% 
+  select(-starts_with("UCL"), -SA1_7DIG16) %>% 
+  filter(!str_detect(SOSR_NAME_2016, "Migratory - Offshore - Shipping")) %>% 
+  filter(!str_detect(SOSR_NAME_2016, "No usual address"))
+
+pop_sa1 <- read_csv("data/ABS/2016 Census GCP Statistical Area 1 for AUST/2016Census_G01_AUS_SA1.csv.gz") %>% 
+  select(SA1_7DIGITCODE_2016, Tot_P_P) %>% 
+  rename(SA1_7DIG16 = SA1_7DIGITCODE_2016)
+
+SA1 <- st_read("./data/geo/1270055001_sa1_2016_aust_shape/SA3_2016_AUST.shp", 
+               stringsAsFactors = FALSE) %>% 
+  st_drop
+
+# View(SA3)
+# st_crs(SA3)
+# qtm(SA3)
+saveRDS(SA3, file = "./data/geo/SA3_2016_AUST.rds")
+```
+
+### Section of State Range (SOSR) 
+
+```{r}
+urban %>% 
+  frq(SOSR_NAME_2016)
+```
+
+### Section of State (SOS)
+
+```{r}
+filter(airbnb_sa1, reporting_month == as.Date("2019-02-01")) %>% 
+  frq(SOS_NAME_2016)
 ```
 
 
