@@ -273,7 +273,7 @@ ERP_SA3_2018 <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia
   ungroup()
 ```
 
-Spatial resolution - **`r nrow(ERP_SA3_2018)`** SA2s.   
+Spatial resolution - **`r nrow(ERP_SA3_2018)`** SA3s.   
 
 ```{r}
 ggplot(ERP_SA3_2018, aes(x = s_t_name, y = ERP_18)) +
@@ -332,7 +332,7 @@ pop_SA3 <- read_csv("data/ABS/2016 Census GCP Statistical Area 3 for AUST/2016Ce
   arrange(SA3_CODE16)
 ```
 
-Spatial resolution - **`r nrow(pop_SA3)`** postcodes.   
+Spatial resolution - **`r nrow(pop_SA3)`** SA3s.   
 
 ```{r}
 ggplot(pop_SA3, aes(pop_cen_18plus)) + 
