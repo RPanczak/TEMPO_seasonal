@@ -173,7 +173,6 @@ tm_shape(SA3_over) +
   tm_dots(text = "airport")
 ```
 
-
 ## Areas of 'influence'
 
 ```{r include=FALSE}
@@ -318,11 +317,13 @@ airport %>%
 
 ## Absolute numbers
 
+### Int'l 
 
 ```{r}
 airport_2018 %>% 
-  filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", 
-                        "Adelaide Airport", "Gold Coast Airport")) %>%
+  filter(airport %in% c("Brisbane Airport", "Melbourne Airport", "Sydney Airport", 
+                        "Perth Airport", "Adelaide Airport", "Gold Coast Airport",
+                        "Cairns Airport", "Canberra Airport", "Darwin Airport")) %>%
   gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
   separate(type, sep = "_", c("source", "bound", "measure")) %>% 
   filter(is.na(measure)) %>% 
@@ -333,12 +334,13 @@ airport_2018 %>%
   ylab("No. of passengers") + xlab("")
 ```
 
-
+### Regional
 
 ```{r}
 airport_2018 %>% 
-  filter(! airport %in% c("Brisbane Airport", "Melbourne Airport", "Perth Airport", "Sydney Airport", 
-                          "Adelaide Airport", "Gold Coast Airport")) %>%
+  filter(! airport %in% c("Brisbane Airport", "Melbourne Airport", "Sydney Airport", 
+                        "Perth Airport", "Adelaide Airport", "Gold Coast Airport",
+                        "Cairns Airport", "Canberra Airport", "Darwin Airport")) %>%
   gather(dom_in:int_out_p, key = "type", value = "passengers") %>% 
   separate(type, sep = "_", c("source", "bound", "measure")) %>% 
   filter(is.na(measure)) %>% 
@@ -348,7 +350,6 @@ airport_2018 %>%
   theme_light() + 
   ylab("No. of passengers") + xlab("")
 ```
-
 
 ## Relative numbers
 
