@@ -40,15 +40,15 @@ p_load(tidyverse, readr, readxl, magrittr,
 ## Pop present
 
 ```{r include=FALSE}
-pop_present_au_18_long <- 
-  readRDS("./Data/ABS/pop_present_month.Rds") %>% 
+pop_present_au_18_month_long <- 
+  readRDS("Data/ABS/pop_present_month.Rds") %>% 
   select(-end) %>% 
   rename(date = start)
 
-write_csv(pop_present_au_18_long, "data/model_input/pop_present_au_18_long.csv")
+write_csv(pop_present_au_18_month_long, "data/model_input/pop_present_au_18_month_long.csv")
 
 # pop_present_au_18_wide <- 
-#   pop_present_au_18_long %>% 
+#   pop_present_au_18_month_long %>% 
 #   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
 #   # mutate(SA3_CODE16 = NA, SA3_NAME16 = "") %>% 
 #   dplyr::select(-date) %>% 
@@ -58,13 +58,15 @@ write_csv(pop_present_au_18_long, "data/model_input/pop_present_au_18_long.csv")
 ```
 
 ```{r}
-summary(pop_present_au_18_long)
+summary(pop_present_au_18_month_long)
 ```
 
 ## ERP
 
+### Single estimate
+
 ```{r include=FALSE}
-erp_sa3_18_long <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds") %>% 
+erp_sa3_18_year_long <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds") %>% 
   group_by(sa3_code, sa3_name) %>% 
   summarise(erp = sum(ERP_18)) %>% 
   ungroup() %>% 
@@ -72,10 +74,10 @@ erp_sa3_18_long <- readRDS("./data/ABS/3218.0 Regional Population Growth, Austra
   mutate(date = ymd("2018-06-30")) %>% 
   select(date, everything())
 
-write_csv(erp_sa3_18_long, "data/model_input/erp_sa3_18_long.csv")
+write_csv(erp_sa3_18_year_long, "data/model_input/erp_sa3_18_year_long.csv")
 
 # erp_sa3_18_wide <- 
-#   erp_sa3_18_long %>% 
+#   erp_sa3_18_year_long %>% 
 #   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
 #   select(-date) %>% 
 #   pivot_wider(names_from = month, values_from = erp)
@@ -84,7 +86,17 @@ write_csv(erp_sa3_18_long, "data/model_input/erp_sa3_18_long.csv")
 ```
 
 ```{r}
-summary(erp_sa3_18_long)
+summary(erp_sa3_18_year_long)
+```
+
+### Interpolated to months
+
+```{r}
+erp_sa3_18_month_long_adj <- read_csv("data/model_input/erp_sa3_18month_adj_long.csv")
+```
+
+```{r}
+summary(erp_sa3_18_month_long_adj)
 ```
 
 # BITRE
@@ -147,4 +159,7 @@ write_csv(ha_sa3_18_long, "data/model_input/ha_sa3_18_long.csv")
 ```{r}
 summary(ha_sa3_18_long)
 ```
+
+# IVS
+
 
