@@ -257,7 +257,9 @@ tempo_sa3_18_month_long <-
   select(-contains("sample")) %>% 
   rename(Airbnb_visitor_nights = airbnb_gno,
          Homeaway_visitor_nights = ha_gno) %>% 
-  arrange(SA3_CODE16, date)
+  arrange(SA3_CODE16, date) %>% 
+  filter(! SA3_NAME16 %in% c("Lord Howe Island")) 
+
 
 write_csv(tempo_sa3_18_month_long, "data/model_input/tempo_sa3_18_month_long.csv")
 saveRDS(tempo_sa3_18_month_long, "data/model_input/tempo_sa3_18_month_long.Rds")
