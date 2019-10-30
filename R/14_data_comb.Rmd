@@ -99,32 +99,72 @@ erp_sa3_18_month_long_adj <- read_csv("data/model_input/erp_sa3_18month_adj_long
 summary(erp_sa3_18_month_long_adj)
 ```
 
+<!-- ------------------------------------------------------------ --> 
+
+# IVS
+
+```{r}
+IVS_SA3_18qtr_long <- read_csv("data/model_input/IVS_SA3_18qtr_long.csv") %>% 
+  mutate(qtr = date)
+
+IVS_sa3_18_month_long <- 
+  expand(IVS_SA3_18qtr_long, nesting(SA3_CODE16, SA3_NAME16), 
+         date = seq(from = ymd("2018-01-01"), to = ymd("2018-12-01"), by = "month")) %>% 
+  left_join(IVS_SA3_18qtr_long) %>% 
+  fill(IVS_visitor_nights, IVS_sample_count, qtr, .direction = "up") %>% 
+  mutate(days_in_month = days_in_month(date)) %>% 
+  group_by(SA3_CODE16, qtr) %>% 
+  mutate(days_in_qtr = sum(days_in_month)) %>% 
+  ungroup() %>% 
+  mutate(share = days_in_month / days_in_qtr) %>% 
+  mutate(IVS_visitor_nights = IVS_visitor_nights * share,
+         IVS_sample_count = IVS_sample_count * share) %>% 
+  select(-share, -qtr, -days_in_month, -days_in_qtr)
+ 
+write_csv(IVS_sa3_18_month_long, "data/model_input/IVS_sa3_18_month_long.csv")
+```
+
+Quarters interpolated to months using share of days of each months in a quarter.
+
+```{r}
+summary(IVS_sa3_18_month_long)
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+
+#NVS
+
+<!-- ------------------------------------------------------------ --> 
+
 # BITRE
 
 ```{r}
-bitre_airport_18_long <- readRDS("data/BITRE/clean/airport_2018.Rds")
+bitre_airport_18_month_long <- readRDS("data/BITRE/clean/airport_2018.Rds")
 
-write_csv(bitre_airport_18_long, "data/model_input/bitre_airport_18_long.csv")
+write_csv(bitre_airport_18_month_long, "data/model_input/bitre_airport_18_month_long.csv")
 ```
 
 ```{r}
-summary(bitre_airport_18_long)
+summary(bitre_airport_18_month_long)
 ```
+
+<!-- ------------------------------------------------------------ --> 
 
 # Airbnb
 
 Using (maximum) number of guest nights occupied (GNO).
 
 ```{r include=FALSE}
-airbnb_sa3_18_long <- 
+airbnb_sa3_18_month_long <- 
   readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/airdna/clean/airbnb_sa3_18.rds") %>% 
   dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno) %>% 
   dplyr::rename(date = reporting_month, airbnb_gno = max_gno)
 
-write_csv(airbnb_sa3_18_long, "data/model_input/airbnb_sa3_18_long.csv")
+write_csv(airbnb_sa3_18_month_long, "data/model_input/airbnb_sa3_18_month_long.csv")
 
 # airbnb_sa3_18_wide <- 
-#   airbnb_sa3_18_long %>% 
+#   airbnb_sa3_18_month_long %>% 
 #   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
 #   select(-date) %>% 
 #   pivot_wider(names_from = month, values_from = airbnb_gno)
@@ -133,22 +173,24 @@ write_csv(airbnb_sa3_18_long, "data/model_input/airbnb_sa3_18_long.csv")
 ```
 
 ```{r}
-summary(airbnb_sa3_18_long)
+summary(airbnb_sa3_18_month_long)
 ```
+
+<!-- ------------------------------------------------------------ --> 
 
 # HomeAway
 
 Using (maximum) number of guest nights occupied (GNO).
 
 ```{r include=FALSE}
-ha_sa3_18_long <- 
+ha_sa3_18_month_long <- 
   readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/ha/clean/ha_sa3_18.rds") %>% 
   dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno) %>% 
   dplyr::rename(date = reporting_month, ha_gno = max_gno)
 
-write_csv(ha_sa3_18_long, "data/model_input/ha_sa3_18_long.csv")
+write_csv(ha_sa3_18_month_long, "data/model_input/ha_sa3_18_month_long.csv")
 
-# ha_sa3_18_wide <- ha_sa3_18_long %>% 
+# ha_sa3_18_wide <- ha_sa3_18_month_long %>% 
 #   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
 #   select(-date) %>% 
 #   pivot_wider(names_from = month, values_from = ha_gno)
@@ -157,9 +199,7 @@ write_csv(ha_sa3_18_long, "data/model_input/ha_sa3_18_long.csv")
 ```
 
 ```{r}
-summary(ha_sa3_18_long)
+summary(ha_sa3_18_month_long)
 ```
-
-# IVS
 
 
