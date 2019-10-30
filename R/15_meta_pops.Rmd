@@ -153,10 +153,10 @@ dat$pi <- with(dat, xi/ni)
 dat <- escalc(measure="PFT", xi=xi, ni=ni, data=dat, add=0)
 
 res_re <- rma(yi, vi, method="REML", data=dat)
-res
+# res_re
 
 pred_re <- predict(res_re, transf=transf.ipft.hm, targs=list(ni=dat$ni))
-pred_re
+# pred_re
 
 dat.back <- summary(dat, transf=transf.ipft, ni=dat$ni)
 
