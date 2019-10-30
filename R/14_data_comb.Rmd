@@ -18,7 +18,7 @@ output:
 <!-- ------------------------------------------------------------ --> 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE, 
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
                       fig.width=9, fig.height=7, out.width="900px", out.height="700px", dpi=300)
 
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
@@ -27,17 +27,12 @@ options(scipen=999)
 set.seed(12345)
 
 library(pacman) 
-p_load(tidyverse, readr, readxl, magrittr, 
-       naniar, janitor, scales, lubridate,  
-       skimr, sjmisc, kableExtra, 
-       sf, tmap, tmaptools)
+p_load(tidyverse, readr, lubridate)
 ```
 
 <!-- ------------------------------------------------------------ --> 
 
-# ABS
-
-## Pop present
+# Pop present
 
 ```{r include=FALSE}
 pop_present_au_18_month_long <- 
@@ -61,9 +56,9 @@ write_csv(pop_present_au_18_month_long, "data/model_input/pop_present_au_18_mont
 summary(pop_present_au_18_month_long)
 ```
 
-## ERP
+# ERP
 
-### Single estimate
+## Single estimate
 
 ```{r include=FALSE}
 erp_sa3_18_year_long <- readRDS("./data/ABS/3218.0 Regional Population Growth, Australia, 2017-18/clean/ERP_SA2_2018.Rds") %>% 
@@ -89,10 +84,10 @@ write_csv(erp_sa3_18_year_long, "data/model_input/erp_sa3_18_year_long.csv")
 summary(erp_sa3_18_year_long)
 ```
 
-### Interpolated to months
+## Interpolated to months
 
 ```{r}
-erp_sa3_18_month_long_adj <- read_csv("data/model_input/erp_sa3_18month_adj_long.csv")
+erp_sa3_18_month_long_adj <- read_csv("data/model_input/erp_sa3_18_month_adj_long.csv")
 ```
 
 ```{r}
@@ -120,7 +115,7 @@ IVS_sa3_18_month_long <-
   mutate(IVS_visitor_nights = IVS_visitor_nights * share,
          IVS_sample_count = IVS_sample_count * share) %>% 
   select(-share, -qtr, -days_in_month, -days_in_qtr)
- 
+
 rm(IVS_SA3_18qtr_long)
 
 write_csv(IVS_sa3_18_month_long, "data/model_input/IVS_sa3_18_month_long.csv")
@@ -134,17 +129,19 @@ summary(IVS_sa3_18_month_long)
 
 <!-- ------------------------------------------------------------ --> 
 
-
 # NVS
 
 ## Origin
 
 ```{r}
-IVS_SA3_18qtr_long <- read_csv("data/model_input/IVS_SA3_18qtr_long.csv")
+NVS_origin_SA3_18_month_long <- read_csv("data/model_input/NVS_origin_SA3_18_month_long.csv")
 ```
 
 ## Destination
 
+```{r}
+NVS_dest_SA3_18_month_long <- read_csv("data/model_input/NVS_dest_SA3_18_month_long.csv")
+```
 
 ## Int'l outbound
 
@@ -165,7 +162,7 @@ NVS_intl_outbound_sa3_18_month_long <-
   mutate(NVS_intl_out_visitor_nights = NVS_intl_out_visitor_nights * share,
          NVS_intl_out_sample_count = NVS_intl_out_sample_count * share) %>% 
   select(-share, -qtr, -days_in_month, -days_in_qtr)
- 
+
 rm(NVS_intl_outbound_SA3_18qtr_Dec17_long)
 
 write_csv(NVS_intl_outbound_sa3_18_month_long, "data/model_input/NVS_intl_outbound_sa3_18_month_long.csv")
@@ -244,4 +241,27 @@ write_csv(ha_sa3_18_month_long, "data/model_input/ha_sa3_18_month_long.csv")
 summary(ha_sa3_18_month_long)
 ```
 
+<!-- ------------------------------------------------------------ --> 
+
+# Master file
+
+```{r}
+tempo_sa3_18_month_long <- 
+  erp_sa3_18_month_long_adj %>% 
+  left_join(NVS_intl_outbound_sa3_18_month_long) %>% 
+  left_join(NVS_origin_SA3_18_month_long) %>% 
+  left_join(NVS_dest_SA3_18_month_long) %>% 
+  left_join(IVS_sa3_18_month_long) %>% 
+  left_join(airbnb_sa3_18_month_long) %>% 
+  left_join(ha_sa3_18_month_long) %>% 
+  select(-contains("sample")) %>% 
+  rename(Airbnb_visitor_nights = airbnb_gno,
+         Homeaway_visitor_nights = ha_gno) %>% 
+  arrange(SA3_CODE16, date)
+
+write_csv(tempo_sa3_18_month_long, "data/model_input/tempo_sa3_18_month_long.csv")
+saveRDS(tempo_sa3_18_month_long, "data/model_input/tempo_sa3_18_month_long.Rds")
+
+summary(tempo_sa3_18_month_long)
+```
 
