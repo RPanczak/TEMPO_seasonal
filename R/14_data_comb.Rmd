@@ -121,6 +121,8 @@ IVS_sa3_18_month_long <-
          IVS_sample_count = IVS_sample_count * share) %>% 
   select(-share, -qtr, -days_in_month, -days_in_qtr)
  
+rm(IVS_SA3_18qtr_long)
+
 write_csv(IVS_sa3_18_month_long, "data/model_input/IVS_sa3_18_month_long.csv")
 ```
 
@@ -133,7 +135,47 @@ summary(IVS_sa3_18_month_long)
 <!-- ------------------------------------------------------------ --> 
 
 
-#NVS
+# NVS
+
+## Origin
+
+```{r}
+IVS_SA3_18qtr_long <- read_csv("data/model_input/IVS_SA3_18qtr_long.csv")
+```
+
+## Destination
+
+
+## Int'l outbound
+
+```{r}
+NVS_intl_outbound_SA3_18qtr_Dec17_long <- read_csv("data/model_input/NVS_intl_outbound_SA3_18qtr+Dec17_long.csv") %>% 
+  mutate(qtr = date)
+
+NVS_intl_outbound_sa3_18_month_long <- 
+  expand(NVS_intl_outbound_SA3_18qtr_Dec17_long, nesting(SA3_CODE16, SA3_NAME16), 
+         date = seq(from = ymd("2018-01-01"), to = ymd("2018-12-01"), by = "month")) %>% 
+  left_join(NVS_intl_outbound_SA3_18qtr_Dec17_long) %>% 
+  fill(NVS_intl_out_visitor_nights, NVS_intl_out_sample_count, qtr, .direction = "up") %>% 
+  mutate(days_in_month = days_in_month(date)) %>% 
+  group_by(SA3_CODE16, qtr) %>% 
+  mutate(days_in_qtr = sum(days_in_month)) %>% 
+  ungroup() %>% 
+  mutate(share = days_in_month / days_in_qtr) %>% 
+  mutate(NVS_intl_out_visitor_nights = NVS_intl_out_visitor_nights * share,
+         NVS_intl_out_sample_count = NVS_intl_out_sample_count * share) %>% 
+  select(-share, -qtr, -days_in_month, -days_in_qtr)
+ 
+rm(NVS_intl_outbound_SA3_18qtr_Dec17_long)
+
+write_csv(NVS_intl_outbound_sa3_18_month_long, "data/model_input/NVS_intl_outbound_sa3_18_month_long.csv")
+```
+
+Quarters interpolated to months using share of days of each months in a quarter.
+
+```{r}
+summary(NVS_intl_outbound_sa3_18_month_long)
+```
 
 <!-- ------------------------------------------------------------ --> 
 
