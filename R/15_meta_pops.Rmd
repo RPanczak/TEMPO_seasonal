@@ -1,0 +1,173 @@
+---
+title: "Testing meta"
+# subtitle: 
+# author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    highlight: pygments
+    keep_md: no
+    # number_sections: yes
+    theme: united
+    # toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE, 
+                      fig.width=9, fig.height=7, out.width="900px", out.height="700px", dpi=300)
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, magrittr, scales, lubridate, metafor)
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Data
+
+## Noosa
+
+```{r}
+tempo_sa3_18_month_long <- readRDS("data/model_input/tempo_sa3_18_month_long.Rds") 
+
+noosa <- tempo_sa3_18_month_long %>% 
+  filter(SA3_NAME16 == "Noosa") %>%
+  # filter(SA3_NAME16 == "Kimberley") %>% 
+  select(-SA3_CODE16, -SA3_NAME16)
+
+oz_total <- tempo_sa3_18_month_long %>% 
+  select(-SA3_CODE16, -SA3_NAME16) %>% 
+  pivot_longer(-date, names_to = "data", values_to = "count") %>% 
+  group_by(date, data) %>% 
+  mutate(oz_total = sum(count, na.rm = TRUE)) %>% 
+  filter(row_number() == 1) %>% 
+  ungroup() %>% 
+  select(-count)
+
+noosa_long <- noosa %>% 
+  pivot_longer(-date, names_to = "data", values_to = "count") # %>% 
+# group_by(data) %>% 
+# mutate(reg_total = sum(count)) %>% 
+# ungroup() %>% 
+# mutate(reg_share = count / reg_total)
+
+# noosa_long %>% 
+#   ggplot(aes(x = date, y = count, colour = data, group = data)) +
+#   geom_line() + 
+#   theme_light() + 
+#   ylab("Visitor nights") + xlab("")
+
+noosa_long %>% 
+  ggplot(aes(x = date, y = count)) +
+  geom_line() + 
+  theme_light() + 
+  facet_wrap(~data, scales = "fixed") +
+  ylab("Visitor nights") + xlab("")
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Proportions & meta
+
+## Jan 
+
+### NVS
+
+```{r}
+nvs <- 
+  left_join(noosa_long %>% 
+              filter(date == ymd("2018-01-01")) %>% 
+              filter(data == "NVS_dest_nights"), 
+            oz_total %>% 
+              filter(date == ymd("2018-01-01")) %>% 
+              filter(data == "NVS_dest_nights") 
+  )
+
+prop.test(nvs$count, nvs$oz_total) 
+```
+
+### Airbnb
+
+```{r}
+airbnb <- 
+  left_join(noosa_long %>% 
+              filter(date == ymd("2018-01-01")) %>% 
+              filter(data == "Airbnb_visitor_nights"), 
+            oz_total %>% 
+              filter(date == ymd("2018-01-01")) %>% 
+              filter(data == "Airbnb_visitor_nights") 
+  )
+
+prop.test(airbnb$count, airbnb$oz_total) 
+```
+
+### Meta FE
+
+```{r}
+# http://www.metafor-project.org/doku.php/analyses:miller1978
+
+dat <- bind_rows(nvs, airbnb) %>% 
+  select(-date) %>% 
+  rename(xi = count, ni = oz_total)
+
+dat$pi <- with(dat, xi/ni)
+dat <- escalc(measure="PFT", xi=xi, ni=ni, data=dat, add=0)
+
+res_fe <- rma(yi, vi, method="FE", data=dat)
+# res_fe
+
+pred_fe <- predict(res_fe, transf=transf.ipft.hm, targs=list(ni=dat$ni))
+# pred_fe
+
+dat.back <- summary(dat, transf=transf.ipft, ni=dat$ni)
+
+forest(dat.back$yi, ci.lb=dat.back$ci.lb, ci.ub=dat.back$ci.ub, psize=1,
+       xlim=c(-0.05, 0.15), alim=c(0, .1), ylim=c(-1, 5), 
+       refline = NA, digits  =4L, 
+       xlab="Proportion", slab = dat.back$data)
+addpoly(pred_fe$pred, ci.lb=pred_fe$ci.lb, ci.ub=pred_fe$ci.ub, row= -0.5, 
+        digits = 4, mlab = "FE Model", efac = 1.3)
+abline(h= 0.5)
+text(-0.05, 4, "Dataset", pos=4)
+text(0.15, 4, "Proportion [95% CI]", pos=2)
+
+```
+
+### Meta RE
+
+```{r}
+dat <- bind_rows(nvs, airbnb) %>% 
+  select(-date) %>% 
+  rename(xi = count, ni = oz_total)
+
+dat$pi <- with(dat, xi/ni)
+dat <- escalc(measure="PFT", xi=xi, ni=ni, data=dat, add=0)
+
+res_re <- rma(yi, vi, method="REML", data=dat)
+res
+
+pred_re <- predict(res_re, transf=transf.ipft.hm, targs=list(ni=dat$ni))
+pred_re
+
+dat.back <- summary(dat, transf=transf.ipft, ni=dat$ni)
+
+forest(dat.back$yi, ci.lb=dat.back$ci.lb, ci.ub=dat.back$ci.ub, psize=1,
+       xlim=c(-0.05, 0.15), alim=c(0, .1), ylim=c(-1, 5), 
+       refline = NA, digits  =4L, 
+       xlab="Proportion", slab = dat.back$data)
+addpoly(pred_re$pred, ci.lb=pred_re$ci.lb, ci.ub=pred_re$ci.ub, row= -0.5, 
+        digits = 4, mlab = "FE Model", efac = 1.3)
+abline(h= 0.5)
+text(-0.05, 4, "Dataset", pos = 4)
+text(0.15, 4, "Proportion [95% CI]", pos = 2)
+
+```
