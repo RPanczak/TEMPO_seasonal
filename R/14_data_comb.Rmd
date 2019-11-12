@@ -36,7 +36,7 @@ p_load(tidyverse, readr, lubridate)
 
 ```{r include=FALSE}
 pop_present_au_18_month_long <- 
-  readRDS("Data/ABS/pop_present_month.Rds") %>% 
+  readRDS("Data/ABS/pop_present/pop_present_month.Rds") %>% 
   select(-end) %>% 
   rename(date = start)
 
@@ -192,6 +192,8 @@ summary(bitre_airport_18_month_long)
 
 # Airbnb
 
+## Utilization
+
 Using (maximum) number of guest nights occupied (GNO).
 
 ```{r include=FALSE}
@@ -215,9 +217,36 @@ write_csv(airbnb_sa3_18_month_long, "data/model_input/airbnb_sa3_18_month_long.c
 summary(airbnb_sa3_18_month_long)
 ```
 
+## Supply
+
+Using (maximum) number of guest nights occupied (GNO).
+
+```{r include=FALSE}
+airbnb_sa3_18_month_long_supply <- 
+  readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/airdna/clean/airbnb_sa3_18.rds") %>% 
+  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, starts_with("supply")) 
+
+write_csv(airbnb_sa3_18_month_long_supply, "data/model_input/airbnb_sa3_18_month_long_supply.csv")
+
+# airbnb_sa3_18_wide <- 
+#   airbnb_sa3_18_month_long %>% 
+#   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+#   select(-date) %>% 
+#   pivot_wider(names_from = month, values_from = airbnb_gno)
+# 
+# write_csv(airbnb_sa3_18_wide, "data/model_input/airbnb_sa3_18_wide.csv")
+```
+
+```{r}
+summary(airbnb_sa3_18_month_long_supply)
+```
+
+
 <!-- ------------------------------------------------------------ --> 
 
 # HomeAway
+
+## Utilization
 
 Using (maximum) number of guest nights occupied (GNO).
 
@@ -241,6 +270,30 @@ write_csv(ha_sa3_18_month_long, "data/model_input/ha_sa3_18_month_long.csv")
 summary(ha_sa3_18_month_long)
 ```
 
+## Supply
+
+Using (maximum) number of guest nights occupied (GNO).
+
+```{r include=FALSE}
+ha_sa3_18_month_long_supply <- 
+  readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/ha/clean/ha_sa3_18.rds") %>% 
+  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, starts_with("supply")) 
+
+write_csv(ha_sa3_18_month_long_supply, "data/model_input/ha_sa3_18_month_long_supply.csv")
+
+# ha_sa3_18_month_wide_supply <- 
+#   ha_sa3_18_month_long_supply %>% 
+#   mutate(month = month(date, label = TRUE, abbr = TRUE)) %>% 
+#   select(-date) %>% 
+#   pivot_wider(names_from = month, values_from = airbnb_gno)
+# 
+# write_csv(ha_sa3_18_month_wide_supply, "data/model_input/ha_sa3_18_month_wide_supply.csv")
+```
+
+```{r}
+summary(ha_sa3_18_month_long_supply)
+```
+
 <!-- ------------------------------------------------------------ --> 
 
 # Master file
@@ -259,7 +312,6 @@ tempo_sa3_18_month_long <-
          Homeaway_visitor_nights = ha_gno) %>% 
   arrange(SA3_CODE16, date) %>% 
   filter(! SA3_NAME16 %in% c("Lord Howe Island")) 
-
 
 write_csv(tempo_sa3_18_month_long, "data/model_input/tempo_sa3_18_month_long.csv")
 saveRDS(tempo_sa3_18_month_long, "data/model_input/tempo_sa3_18_month_long.Rds")
