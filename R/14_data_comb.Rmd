@@ -199,8 +199,8 @@ Using (maximum) number of guest nights occupied (GNO).
 ```{r include=FALSE}
 airbnb_sa3_18_month_long <- 
   readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/airdna/clean/airbnb_sa3_18.rds") %>% 
-  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno) %>% 
-  dplyr::rename(date = reporting_month, airbnb_gno = max_gno)
+  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno, max_gna) %>% 
+  dplyr::rename(date = reporting_month, airbnb_gno = max_gno, airbnb_gna = max_gna)
 
 write_csv(airbnb_sa3_18_month_long, "data/model_input/airbnb_sa3_18_month_long.csv")
 
@@ -253,8 +253,8 @@ Using (maximum) number of guest nights occupied (GNO).
 ```{r include=FALSE}
 ha_sa3_18_month_long <- 
   readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/ha/clean/ha_sa3_18.rds") %>% 
-  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno) %>% 
-  dplyr::rename(date = reporting_month, ha_gno = max_gno)
+  dplyr::select(SA3_CODE16, SA3_NAME16, reporting_month, max_gno, max_gna) %>% 
+  dplyr::rename(date = reporting_month, ha_gno = max_gno, ha_gna = max_gna)
 
 write_csv(ha_sa3_18_month_long, "data/model_input/ha_sa3_18_month_long.csv")
 
