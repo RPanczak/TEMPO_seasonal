@@ -56,7 +56,8 @@ glimpse(data)
 
 ```{r}
 data <- data %>% 
-  mutate(Airbnb_visitor_nights = ifelse(is.na(Airbnb_visitor_nights), 0, Airbnb_visitor_nights))
+  mutate(Airbnb_visitor_nights = ifelse(is.na(Airbnb_visitor_nights), 
+                                        0, Airbnb_visitor_nights))
 ```
 
 ### Individual time trajectories
@@ -295,8 +296,21 @@ data %>%
   geom_line(aes(y = m3_fit_poi, group = SA3_NAME16, col = region_types)) +
   geom_point(aes(y = Airbnb_visitor_nights), 
              col = "#00AFBB", alpha = 0.3) +
-  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
-  #            col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_poi, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
   theme_minimal() + 
   scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
   xlab("") + ylab("Observed/fitted") + 
@@ -333,8 +347,26 @@ data %>%
   geom_line(aes(y = m3_fit_poi, group = SA3_NAME16), col = "darkorchid4") +
   geom_point(aes(y = Airbnb_visitor_nights), 
              col = "#00AFBB", alpha = 0.3) +
-  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
-  #            col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("Mornington Peninsula", 
+             "Surf Coast - Bellarine Peninsula",
+             "Shoalhaven",
+             "Melbourne City"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_poi, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
   scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
   theme_minimal() + 
   xlab("") + ylab("Observed/fitted") + 
@@ -371,8 +403,26 @@ data %>%
   geom_line(aes(y = m3_fit_poi, group = SA3_NAME16), col = "darkorchid4") +
   geom_point(aes(y = Airbnb_visitor_nights), 
              col = "#00AFBB", alpha = 0.3) +
-  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
-  #            col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("Port Stephens", 
+             "Barkly",
+             "Central Highlands (Qld)",
+             "Canberra East"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_poi, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
   scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
   theme_minimal() + 
   xlab("") + ylab("Observed/fitted") + 
@@ -497,8 +547,21 @@ data %>%
   geom_line(aes(y = m3_fit_nb, group = SA3_NAME16, col = region_types)) +
   geom_point(aes(y = Airbnb_visitor_nights), 
              col = "#00AFBB", alpha = 0.3) +
-  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
-  #            col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_nb, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
   theme_minimal() + 
   scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
   xlab("") + ylab("Observed/fitted") + 
@@ -535,8 +598,26 @@ data %>%
   geom_line(aes(y = m3_fit_nb, group = SA3_NAME16), col = "darkorchid4") +
   geom_point(aes(y = Airbnb_visitor_nights), 
              col = "#00AFBB", alpha = 0.3) +
-  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
-  #            col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("Mornington Peninsula", 
+             "Surf Coast - Bellarine Peninsula",
+             "Shoalhaven",
+             "Melbourne City"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_nb, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
   scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
   theme_minimal() + 
   xlab("") + ylab("Observed/fitted") + 
@@ -573,12 +654,28 @@ data %>%
   geom_line(aes(y = m3_fit_nb, group = SA3_NAME16), col = "darkorchid4") +
   geom_point(aes(y = Airbnb_visitor_nights), 
              col = "#00AFBB", alpha = 0.3) +
-  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
-  #            col = "#E7B800", alpha = 0.33) +
   scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
   theme_minimal() + 
   xlab("") + ylab("Observed/fitted") + 
   facet_wrap(~SA3_NAME16, scales = "free_y")
 ```
 
-  
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("East Arnhem", 
+             "Barkly",
+             "Central Highlands (Qld)",
+             "Canberra East"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_nb, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
