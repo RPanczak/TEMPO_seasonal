@@ -1,0 +1,584 @@
+---
+title: "Airbnb & NVS models"
+subtitle: "Experiments with multilevel GLMs"
+# author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    highlight: pygments
+    keep_md: no
+    # number_sections: yes
+    theme: united
+    # toc: yes
+    toc_depth: 4
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, warning = FALSE, 
+                      fig.width = 8, fig.height = 5,
+                      out.width = "800px", out.height = "500px",
+                      dpi = 300)
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(pacman) 
+p_load(tidyverse, lubridate, sjPlot,
+       lme4, ggeffects, performance)
+
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Data
+
+```{r}
+data <- readRDS("data/model_input/tempo_sa3_18_month_long.Rds")
+
+glimpse(data)
+
+# length(unique(data$SA3_CODE16))
+# length(unique(data$SA3_NAME16))
+```
+
+## Airbnb
+
+`Illawarra Catchment Reserve` has no Airbnb data. TS filled with zeros.
+
+```{r}
+data <- data %>% 
+  mutate(Airbnb_visitor_nights = ifelse(is.na(Airbnb_visitor_nights), 0, Airbnb_visitor_nights))
+```
+
+### Individual time trajectories
+
+```{r}
+summary(data$Airbnb_visitor_nights)
+
+data %>% 
+  ggplot(aes(x = date, y = Airbnb_visitor_nights/100000)) + 
+  geom_line(aes(group = SA3_CODE16), 
+            alpha = 0.15, color = "darkorchid4") + 
+  theme_minimal()
+```
+
+
+### Freq of values
+
+```{r}
+data %>%  
+  ggplot(aes(x = Airbnb_visitor_nights)) + 
+  geom_histogram(binwidth = 1000) + 
+  theme_minimal()
+
+```
+
+### Totals by region
+
+```{r}
+aggregated <- data %>% 
+  group_by(SA3_CODE16, SA3_NAME16) %>% 
+  summarise(NVS_dest_nights_year = as.integer(round(sum(NVS_dest_nights))), 
+            Airbnb_visitor_nights_year = as.integer(round(sum(Airbnb_visitor_nights)))) %>%   
+  ungroup()
+
+summary(aggregated$Airbnb_visitor_nights_year)
+
+aggregated %>%  
+  ggplot(aes(x = Airbnb_visitor_nights_year/100000)) + 
+  geom_histogram(binwidth = 1) + 
+  theme_minimal()
+
+```
+
+## NVS
+
+### Individual time trajectories
+
+```{r}
+summary(data$NVS_dest_nights)
+
+data %>% 
+  ggplot(aes(x = date, y = NVS_dest_nights/100000)) + 
+  geom_line(aes(group = SA3_CODE16), 
+            alpha = 0.15, color = "darkorchid4") + 
+  theme_minimal()
+
+```
+
+### Totals by region
+
+```{r}
+summary(aggregated$NVS_dest_nights_year)
+
+aggregated %>% 
+  ggplot(aes(x = NVS_dest_nights_year/100000)) + 
+  geom_histogram(binwidth = 1) + 
+  theme_minimal()
+
+```
+
+
+## Relationship
+
+### Yearly 
+
+```{r}
+aggregated %>% 
+  ggplot(aes(x = NVS_dest_nights_year/100000)) + 
+  geom_point(aes(y = Airbnb_visitor_nights_year/100000), 
+             alpha = 0.5) + 
+  geom_line(aes(y = NVS_dest_nights_year/100000), 
+            color = "lightblue") +
+  theme_minimal()
+```
+
+Only few places where Airbnb is equal or more NVS.
+
+```{r}
+aggregated %>% 
+  filter(Airbnb_visitor_nights_year >= NVS_dest_nights_year) %>% 
+  dplyr::select(SA3_NAME16, Airbnb_visitor_nights_year, NVS_dest_nights_year)
+
+```
+
+### Monthly
+
+```{r}
+data %>% 
+  group_by(SA3_CODE16) %>% 
+  ggplot(aes(x = NVS_dest_nights)) + 
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             alpha = 0.5) + 
+  geom_line(aes(y = NVS_dest_nights), 
+            color = "lightblue") + 
+  facet_wrap(~date) +
+  theme_minimal()
+```
+
+More places where Airbnb is equal or more NVS.
+
+```{r}
+data %>% 
+  group_by(SA3_CODE16) %>% 
+  filter(Airbnb_visitor_nights >= NVS_dest_nights) %>% 
+  dplyr::select(SA3_NAME16, Airbnb_visitor_nights, NVS_dest_nights)
+
+```
+
+# Poisson models using `lme4`
+
+```{r}
+data <- data %>% 
+  left_join(aggregated)
+
+data <- data %>% 
+  group_by(SA3_CODE16) %>% 
+  mutate(time = row_number()) %>% 
+  ungroup()
+```
+
+## random region, no time
+
+```{r}
+m1 <- glmer(Airbnb_visitor_nights ~ 1 + 
+              offset(log(NVS_dest_nights_year)) +
+              (1 | SA3_NAME16),
+            data = data, 
+            family = poisson(link = "log"))
+
+summary(m1)
+# confint(m1)
+```
+
+## random region + time
+
+```{r}
+m2 <- glmer(Airbnb_visitor_nights ~ 1 + 
+              time +
+              offset(log(NVS_dest_nights_year)) +
+              (1 | SA3_NAME16),
+            data = data, 
+            family = poisson(link = "log"))
+
+summary(m2)
+# confint(m2)
+```
+
+## random region + random time
+
+```{r}
+m3 <- glmer(Airbnb_visitor_nights ~ 1 + 
+              time +
+              offset(log(NVS_dest_nights_year)) +
+              (1 + time | SA3_NAME16),
+            data = data, 
+            family = poisson(link = "log"))
+
+summary(m3)
+# confint(m3)
+```
+
+## Comparison
+
+```{r}
+tab_model(m1, m2, m3)
+
+performance::compare_performance(m1, m2, m3)
+# performance::model_performance(m3)
+
+performance::check_overdispersion(m3)
+performance::check_singularity(m3)
+performance::check_model(m3, panel = TRUE)
+performance::r2(m3) 
+performance::icc(m3) 
+insight::get_variance(m3)
+
+```
+
+## Best model (AIC/BIC)
+
+```{r}
+summary(m3)
+
+# anova(m1, m3)
+# anova(m2, m3)
+# anova(m3, m3)
+
+# plot_model(m3, type = "est")
+# plot_model(m3, type = "slope")
+# plot_model(m3, type = "resid")
+# plot_model(m3, type = "diag")
+
+data$m3_fit_poi <- fitted(m3)
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m3_fit_poi),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m3_fit_poi),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+# plot(ggpredict(m3, "time"))
+
+```
+
+## Example areas
+
+```{r}
+regions <- readRDS("./data/regions/regions.rds") %>% 
+  dplyr::select(sa3, region_types)  %>% 
+  rename(SA3_NAME16 = sa3)
+
+regions
+```
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_poi, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
+  #            col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+## Outliers
+
+### Absolute
+
+```{r}
+data$diff_abs <- data$Airbnb_visitor_nights - data$m3_fit_poi
+
+data %>% 
+  arrange(desc(diff_abs)) %>% 
+  dplyr::select(SA3_NAME16, date, diff_abs) %>% 
+  print(n = 20)
+
+data %>% 
+  arrange(diff_abs) %>% 
+  dplyr::select(SA3_NAME16, date, diff_abs) %>% 
+  print(n = 20)
+```
+
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("Mornington Peninsula", 
+             "Surf Coast - Bellarine Peninsula",
+             "Shoalhaven",
+             "Melbourne City"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_poi, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
+  #            col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+### Relative
+
+```{r}
+data$diff_rel <- (data$Airbnb_visitor_nights - data$m3_fit_poi)/data$Airbnb_visitor_nights
+
+data %>% 
+  filter(Airbnb_visitor_nights > 0) %>%  
+  arrange(desc(diff_rel)) %>% 
+  dplyr::select(SA3_NAME16, date, diff_rel) %>% 
+  print(n = 20)
+
+data %>% 
+  filter(Airbnb_visitor_nights > 0) %>%  
+  arrange(diff_rel) %>% 
+  dplyr::select(SA3_NAME16, date, diff_rel) %>% 
+  print(n = 20)
+```
+
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("Port Stephens", 
+             "Barkly",
+             "Central Highlands (Qld)",
+             "Canberra East"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_poi, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
+  #            col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+# NB models using `lme4`
+
+## Distributions
+
+```{r}
+p_load(fitdistrplus)
+
+poi <- fitdist(data$Airbnb_visitor_nights, "pois")
+nb <- fitdist(data$Airbnb_visitor_nights, "nbinom")
+
+par(mfrow = c(1,2))
+denscomp(list(poi, nb), 
+         legendtext = c("Poisson", "NB"), fitlty = 1)
+cdfcomp(list(poi, nb), 
+        legendtext = c("Poisson", "NB"), fitlty = 1)
+
+gofstat(list(poi, nb), 
+        fitnames = c("Poisson", "negative binomial"))
+```
+
+## random region, no time
+
+```{r}
+m1 <- glmer.nb(Airbnb_visitor_nights ~ 1 + 
+              offset(log(NVS_dest_nights_year)) +
+              (1 | SA3_NAME16),
+            data = data)
+
+summary(m1)
+# confint(m1)
+```
+
+## random region + time
+
+```{r}
+m2 <- glmer.nb(Airbnb_visitor_nights ~ 1 + 
+              time +
+              offset(log(NVS_dest_nights_year)) +
+              (1 | SA3_NAME16),
+            data = data)
+
+summary(m2)
+warnings()
+# confint(m2)
+```
+
+## random region + random time
+
+```{r}
+m3 <- glmer.nb(Airbnb_visitor_nights ~ 1 + 
+              time +
+              offset(log(NVS_dest_nights_year)) +
+              (1 + time | SA3_NAME16),
+            data = data)
+
+summary(m3)
+# confint(m3)
+```
+
+## Comparison
+
+```{r}
+tab_model(m1, m2, m3,
+          show.aic = TRUE, show.dev = TRUE)
+
+performance::compare_performance(m1, m2, m3)
+# performance::model_performance(m3)
+
+performance::check_singularity(m3)
+performance::check_model(m3, panel = TRUE)
+performance::r2(m3) 
+performance::icc(m3) 
+insight::get_variance(m3)
+
+```
+
+## Best model (AIC/BIC)
+
+```{r}
+summary(m3)
+
+# anova(m1, m3)
+# anova(m2, m3)
+# anova(m3, m3) 
+
+# plot_model(m3, type = "est")
+# plot_model(m3, type = "slope")
+# plot_model(m3, type = "resid")
+# plot_model(m3, type = "diag")
+
+data$m3_fit_nb <- fitted(m3)
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m3_fit_nb),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m3_fit_nb),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+# plot(ggpredict(m3, "time"))
+
+```
+
+## Example areas
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_nb, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
+  #            col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+## Outliers
+
+### Absolute
+
+```{r}
+data$diff_abs <- data$Airbnb_visitor_nights - data$m3_fit_nb
+
+data %>% 
+  arrange(desc(diff_abs)) %>% 
+  dplyr::select(SA3_NAME16, date, diff_abs) %>% 
+  print(n = 20)
+
+data %>% 
+  arrange(diff_abs) %>% 
+  dplyr::select(SA3_NAME16, date, diff_abs) %>% 
+  print(n = 20)
+```
+
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("Mornington Peninsula", 
+             "Surf Coast - Bellarine Peninsula",
+             "Shoalhaven",
+             "Melbourne City"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_nb, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
+  #            col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+### Relative
+
+```{r}
+data$diff_rel <- (data$Airbnb_visitor_nights - data$m3_fit_nb)/data$Airbnb_visitor_nights
+
+data %>% 
+  filter(Airbnb_visitor_nights > 0) %>%  
+  arrange(desc(diff_rel)) %>% 
+  dplyr::select(SA3_NAME16, date, diff_rel) %>% 
+  print(n = 20)
+
+data %>% 
+  filter(Airbnb_visitor_nights > 0) %>%  
+  arrange(diff_rel) %>% 
+  dplyr::select(SA3_NAME16, date, diff_rel) %>% 
+  print(n = 20)
+```
+
+```{r}
+data %>% 
+  filter(SA3_NAME16 %in% 
+           c("East Arnhem", 
+             "Barkly",
+             "Central Highlands (Qld)",
+             "Canberra East"
+           )) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m3_fit_nb, group = SA3_NAME16), col = "darkorchid4") +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  # geom_point(aes(y = adr_50p_int, size = n_listings_int), 
+  #            col = "#E7B800", alpha = 0.33) +
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  theme_minimal() + 
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+  
