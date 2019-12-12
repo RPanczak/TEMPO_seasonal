@@ -13,6 +13,8 @@ output:
     number_sections: true
     theme: united 
     highlight: pygments 
+editor_options: 
+  chunk_output_type: console
 ---
 
 <!-- ------------------------------------------------------------ --> 
