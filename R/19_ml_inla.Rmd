@@ -1,0 +1,71 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+## INLA setup
+
+```{r echo=TRUE, results=FALSE}
+p_load(INLA, INLAutils)
+
+# ####
+# Jeffreys prior 
+a1 <- 5e-5
+b1 <- 5e-5
+lgprior1 <- list(prec = list(param = c(a1, b1)))
+
+# Gelman prior
+a2 <- -0.5
+b2 <- 5e-5
+lgprior2 <- list(prec = list(param = c(a2, b2)))
+
+# iid prior 
+# Schrödle & Held 2010 & Blangiardo et al 2013
+a0 <- 1
+b0 <- 0.1
+prior.nu <- list(prec = list(param = c(a0, b0)))
+
+# intercept & fixed
+inla.set.control.fixed.default() 
+
+# intercept ~ N(0,0) 
+# other fixed effects ~ N(0, 0.001) 
+# 
+# where the format is N(mean, precision) 
+# precision = inverse of the variance. 
+
+# PC prior
+U <- 1
+hyper.prec = list(theta = list(
+  prior = "pc.prec",
+  param = c(U, 0.01)
+))
+
+# scaling 
+inla.setOption(scale.model.default = TRUE)
+
+```
+
+## ???
+
+```{r}
+m1 <- inla(Airbnb_visitor_nights ~ 1 +
+             f(SA3_NAME16, model = "iid") +
+             f(time, model = "rw1", 
+               scale.model = TRUE, 
+               hyper = hyper.prec), 
+           family = "poisson", 
+           # family = "nbinomial", 
+           offset = log(NVS_dest_nights_year),
+           control.compute = list(dic= TRUE, waic = TRUE),  
+           data = data)
+```
+
+```{r eval=FALSE, include=FALSE}
+m1_fit <- bind_cols(time = data$time, 
+                    count = data$Airbnb_visitor_nights,
+                      fit = m1$summary.fitted.values$`0.5quant`,
+                      lci = m1$summary.fitted.values$`0.025quant`, 
+                      uci = m1$summary.fitted.values$`0.975quant`)
+
+```
