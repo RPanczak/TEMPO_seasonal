@@ -36,6 +36,35 @@ p_load(tidyverse, lubridate)
 
 ```
 
+```{r}
+data <- readRDS("data/model_input/tempo_sa3_18_month_long.Rds")
+
+glimpse(data)
+
+# length(unique(data$SA3_CODE16))
+# length(unique(data$SA3_NAME16))
+
+# `Illawarra Catchment Reserve` has no Airbnb data. TS filled with zeros.
+
+data <- data %>% 
+  mutate(Airbnb_visitor_nights = ifelse(is.na(Airbnb_visitor_nights), 
+                                        0, Airbnb_visitor_nights))
+
+aggregated <- data %>% 
+  group_by(SA3_CODE16, SA3_NAME16) %>% 
+  summarise(NVS_dest_nights_year = as.integer(round(sum(NVS_dest_nights))), 
+            Airbnb_visitor_nights_year = as.integer(round(sum(Airbnb_visitor_nights)))) %>%   
+  ungroup()
+
+data <- data %>% 
+  left_join(aggregated)
+
+data <- data %>% 
+  group_by(SA3_CODE16) %>% 
+  mutate(time = row_number()) %>% 
+  ungroup()
+
+```
 # Testing `gamm4`
 
 ```{r}
