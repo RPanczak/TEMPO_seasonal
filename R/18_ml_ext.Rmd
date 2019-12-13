@@ -10,7 +10,7 @@ output:
     keep_md: no
     # number_sections: yes
     theme: united
-    # toc: yes
+    toc: yes
     toc_depth: 4
     toc_float: yes
 editor_options: 
@@ -64,34 +64,136 @@ data <- data %>%
   mutate(time = row_number()) %>% 
   ungroup()
 
-```
-# Testing `gamm4`
+regions <- readRDS("./data/regions/regions.rds") %>% 
+  dplyr::select(sa3, region_types)  %>% 
+  rename(SA3_NAME16 = sa3)
 
-```{r}
-p_load(gamm4)
+climate <- read_csv("data/model_input/climate_zones_SA3_centroid.csv", 
+                    col_types = cols(SA3_NAME_2016 = col_skip(), 
+                                     cz_code = col_integer())) %>% 
+  rename(SA3_CODE16 = SA3_CODE_2016)
+
+data <- data %>% 
+  select(-erp_adj, -NVS_intl_out_visitor_nights, -NVS_origin_nights,
+         -airbnb_gna, -Homeaway_visitor_nights, -ha_gna) %>% 
+  left_join(climate)
 
 data$SA3_NAME16 <- as_factor(data$SA3_NAME16)
+data$cz_desc <- as_factor(data$cz_desc)
 
-m1 <- gamm4(Airbnb_visitor_nights ~ 1 + 
-              # s(time, bs = "tp"),
-              # s(time, bs = "cr"),
-              s(time, bs = "cc"),
-              random = ~(1 | SA3_NAME16),
-            data = data, 
-            family = poisson)
+```
 
-m1 <- gamm4(Airbnb_visitor_nights ~ 1 + 
-              # s(time, bs = "tp"),
-              # s(time, bs = "cr", by = SA3_NAME16),
-              s(time, bs = "cc", by = SA3_NAME16),
-            data = data, 
-            family = poisson)
+# Testing `mgcv` v1
 
-summary(m1$mer)
-summary(m1$gam)
-plot(m1$gam, shade=TRUE)
+```{r}
+p_load(mgcv, gratia)
+```
 
-data$m1 <- predict(m1$gam, type="response")
+## Cyclical time only
+
+```{r}
+m0 <- gam(Airbnb_visitor_nights ~ 1 + 
+            s(time, bs = "cc"),
+          offset = log(NVS_dest_nights_year),
+          data = data, 
+          # niterPQL=500,
+          # family = negbin(1))
+          family = poisson)
+
+summary(m0) 
+
+# gam.check(m0)
+# plot.gam(m0, shade = TRUE)
+
+draw(m0)
+appraise(m0)
+
+# acf(residuals(m0), main = "Raw residual ACF")
+# acf(residuals(m0, type = "normalized"), main = "Standardized residual ACF")
+
+data$m0 <- fitted(m0)
+# data$m0 <- predict.gam(m0, type = "response")
+
+head(predict.gam(m0, type="link"))
+
+str(predict.gam(m0, type="terms"))
+dim(predict.gam(m0, type="terms"))
+head(predict.gam(m0, type="terms"), n =24)
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m0),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m0),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+
+```
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m0, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r eval=FALSE, include=FALSE}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m0, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+## Cyclical time by climate region
+
+```{r}
+m1 <- gam(Airbnb_visitor_nights ~ 1 + 
+            s(time, by = cz_desc, bs = "cc"),
+          offset = log(NVS_dest_nights_year),
+          data = data, 
+          # niterPQL=500,
+          # family = negbin(1))
+          family = poisson)
+
+summary(m1) 
+
+# gam.check(m1)
+# plot.gam(m1, shade = TRUE)
+
+draw(m1)
+appraise(m1)
+
+# acf(residuals(m1), main = "Raw residual ACF")
+# acf(residuals(m1, type = "normalized"), main = "Standardized residual ACF")
+
+data$m1 <- fitted(m1)
+# data$m1 <- predict.gam(m1, type = "response")
+
+head(predict.gam(m1, type="link"))
+
+str(predict.gam(m1, type="terms"))
+dim(predict.gam(m1, type="terms"))
+head(predict.gam(m1, type="terms"), n =24)
 
 ggplot(data, aes(x = Airbnb_visitor_nights)) +
   geom_point(aes(y = m1),
@@ -105,22 +207,145 @@ ggplot(data, aes(x = Airbnb_visitor_nights)) +
   geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
   facet_wrap(~date) +
   theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m1),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~cz_desc) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
 ```
 
-# Testing `mgcv`
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m1, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r eval=FALSE, include=FALSE}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m1, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+## Cyclical time by climate region + random effects on SA3
+
+```{r}
+m2 <- gam(Airbnb_visitor_nights ~ 1 + 
+            s(time, by = cz_desc, bs = "cc") +
+            s(SA3_CODE16, bs="re", k = length(unique(data$SA3_NAME16))),
+          offset = log(NVS_dest_nights_year),
+          data = data, 
+          # niterPQL=500,
+          # family = negbin(1))
+          family = poisson)
+
+summary(m2) 
+
+# gam.check(m2)
+# plot.gam(m2, shade = TRUE)
+
+draw(m2)
+appraise(m2)
+
+# acf(residuals(m2), main = "Raw residual ACF")
+# acf(residuals(m2, type = "normalized"), main = "Standardized residual ACF")
+
+data$m2 <- fitted(m2)
+# data$m2 <- predict.gam(m2, type = "response")
+
+head(predict.gam(m2, type="link"))
+
+str(predict.gam(m2, type="terms"))
+dim(predict.gam(m2, type="terms"))
+head(predict.gam(m2, type="terms"), n =24)
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m2),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m2),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m2),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~cz_desc) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+```
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m2, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r eval=FALSE, include=FALSE}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m2, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+
+# Testing `mgcv` v2
 
 ```{r}
 p_load(mgcv)
+```
 
-data$SA3_NAME16 <- as_factor(data$SA3_NAME16)
+## Cyclical time only
 
+```{r}
 m1 <- gamm(Airbnb_visitor_nights ~ 1 + 
              # s(time, bs = "tp"),
              # s(time, bs = "cr"),
              s(time, bs = "cc"),
-           # offset(log(NVS_dest_nights_year)),
-           random=list(SA3_NAME16 = ~1),
+           offset = log(NVS_dest_nights_year),
+           random=list(SA3_NAME16 = ~ 1),
            data = data, 
+           niterPQL=500,
+           # family = negbin(1))
            family = poisson)
 
 summary(m1$lme) # details of underlying lme fit
@@ -135,7 +360,7 @@ acf(residuals(m1$gam), main = "Raw residual ACF")
 acf(residuals(m1$lme, type = "normalized"), main = "Standardized residual ACF")
 
 predict.gam(m1$gam, type="link")
-predict.gam(m1$gam, type="response")
+predict.gam(m1$gam, type = "response")
 predict.gam(m1$gam, type="terms")
 
 ggplot(data, aes(x = Airbnb_visitor_nights)) +
@@ -150,7 +375,159 @@ ggplot(data, aes(x = Airbnb_visitor_nights)) +
   geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
   facet_wrap(~date) +
   theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+
 ```
+
+## Cyclical time by SA3
+
+```{r}
+p_load(mgcv)
+
+m2 <- gamm(Airbnb_visitor_nights ~ 1 + 
+             # s(time, bs = "tp"),
+             # s(time, bs = "cr"),
+             s(time, bs = "cc", by = SA3_NAME16),
+           offset = log(NVS_dest_nights_year),
+           random=list(SA3_NAME16 = ~ 1),
+           data = data, 
+           niterPQL=500,
+           family = negbin(1))
+# family = poisson)
+
+summary(m2$lme) # details of underlying lme fit
+summary(m2$gam) # gam style summary of fitted model
+
+gam.check(m2$gam)
+plot.gam(m2$gam, shade = TRUE)
+
+data$m2 <- exp(fitted(m2$lme))
+
+acf(residuals(m2$gam), main = "Raw residual ACF")
+acf(residuals(m2$lme, type = "normalized"), main = "Standardized residual ACF")
+
+predict.gam(m2$gam, type="link")
+predict.gam(m2$gam, type = "response")
+predict.gam(m2$gam, type="terms")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m2),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m2),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+
+```
+## Example areas
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m1, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m1, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+
+# Testing `gamm4`
+
+```{r}
+p_load(gamm4)
+```
+
+## Cyclical time only
+
+```{r}
+m1 <- gamm4(Airbnb_visitor_nights ~ 1 + 
+              # s(time, bs = "tp"),
+              # s(time, bs = "cr"),
+              s(time, bs = "cc"),
+            random = ~(1 | SA3_NAME16),
+            data = data, 
+            family = poisson)
+
+summary(m1$mer)
+summary(m1$gam)
+plot(m1$gam, shade=TRUE)
+
+data$m1 <- predict(m1$gam, type = "response")
+data$m1 <- fitted(m1$gam)
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m1),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m1),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+```
+
+## Cyclical time by climate zone
+
+```{r}
+m2 <- gamm4(Airbnb_visitor_nights ~ 1 + 
+              # s(time, bs = "tp"),
+              # s(time, bs = "cr", by = SA3_NAME16),
+              # s(time, bs = "cc", by = SA3_NAME16),
+              s(time, bs = "cc", by = cz_desc),
+            random = ~(1 | SA3_NAME16),
+            data = data, 
+            family = poisson)
+
+summary(m2$mer)
+summary(m2$gam)
+plot(m2$gam, shade=TRUE, rug=TRUE, pages=1)
+
+data$m2 <- predict(m2$gam, type = "response")
+data$m1 <- fitted(m2$gam)
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m2),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m2),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+```
+
+
 
 # Testing `glmmADMB`
 
