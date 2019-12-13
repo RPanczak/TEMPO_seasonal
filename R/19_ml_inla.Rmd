@@ -51,21 +51,44 @@ inla.setOption(scale.model.default = TRUE)
 ```{r}
 m1 <- inla(Airbnb_visitor_nights ~ 1 +
              f(SA3_NAME16, model = "iid") +
-             f(time, model = "rw1", 
+             f(time, model = "rw2", 
                scale.model = TRUE, 
                hyper = hyper.prec), 
-           family = "poisson", 
-           # family = "nbinomial", 
+           # family = "poisson", 
+           family = "nbinomial",
            offset = log(NVS_dest_nights_year),
            control.compute = list(dic= TRUE, waic = TRUE),  
            data = data)
 ```
 
-```{r eval=FALSE, include=FALSE}
-m1_fit <- bind_cols(time = data$time, 
+```{r}
+m1_fit <- bind_cols(SA3_NAME16 = data$SA3_NAME16,
+                    time = data$time, 
                     count = data$Airbnb_visitor_nights,
-                      fit = m1$summary.fitted.values$`0.5quant`,
-                      lci = m1$summary.fitted.values$`0.025quant`, 
-                      uci = m1$summary.fitted.values$`0.975quant`)
+                    fit = m1$summary.fitted.values$`0.5quant`,
+                    lci = m1$summary.fitted.values$`0.025quant`, 
+                    uci = m1$summary.fitted.values$`0.975quant`)
+
+```
+
+### Summary 
+
+```{r}
+summary(m1)
+autoplot(m1)
+```
+
+### Fitted values
+
+```{r}
+
+m1_fit %>%   
+  right_join(regions) %>% 
+  ggplot(aes(x = time, group = SA3_NAME16)) +
+  geom_point(aes(y = count), alpha = 0.5) +
+  geom_line(aes(y = fit, col = region_types)) +
+  geom_ribbon(aes(ymin = lci, ymax = uci, fill = region_types), alpha = 0.3) +
+  theme_minimal() + xlab("") +
+  facet_wrap(~SA3_NAME16, scales = "free_y")
 
 ```
