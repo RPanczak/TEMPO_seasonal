@@ -1,0 +1,172 @@
+---
+title: "Redistributing ABS national counts"
+subtitle: Gentry's solution
+# author: "Radoslaw Panczak"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: DejaVu Sans
+output: 
+  html_document: 
+    highlight: pygments
+    keep_md: no
+    # number_sections: yes
+    theme: united
+    # toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+<!-- ------------------------------------------------------------ --> 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE, 
+                      fig.width=9, fig.height=7, out.width="900px", out.height="700px", dpi=300)
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+options(scipen=999)
+set.seed(12345)
+
+library(tidyverse) 
+library(magrittr) 
+library(lubridate) 
+library(MCMCpack) 
+```
+
+<!-- ------------------------------------------------------------ --> 
+
+# Simulated data
+
+```{r echo=TRUE}
+## Generate some sample data with distinct values for thetas (11 regions 10 sources)
+## Overall probabilites
+p <- c(1, 3, 3, 7, 1, 2, 5, 4, 2, 2, 1)
+p <- p/sum(p)
+
+## Samples to account for variation between sources
+theta <- rdirichlet(10, p)
+
+## Now generate actual data
+Y <- matrix(NA, 11, 10)
+
+for(i in 1:10) {
+  Y[, i] <- rmultinom(1, 10000, theta[i,])
+}
+
+## Note that the posterior parameters for the dirichlet are the rowSums of Y plus the hyperparameters (1)
+alpha <- rowSums(Y) + 1
+
+## Posterior Proportions expectations
+p.post <- alpha/sum(alpha)
+
+## Now generate samples from the posterior predicitive
+post.p.sample <- rdirichlet(1000, alpha)
+
+p[1]
+mean(post.p.sample[, 1])
+
+post.pred <- 10000*post.p.sample
+
+mean(post.pred[, 1])
+mean(Y[1, ])
+```
+
+# Real data
+
+Using Sept '18 figures
+
+## Airbnb
+
+Using (maximum) number of guest nights occupied (GNO).
+
+```{r}
+airbnb_sa3_18 <- 
+  readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/airdna/clean/airbnb_sa3_18.rds") %>% 
+  dplyr::filter(reporting_month == ymd("2018-09-01")) %>% 
+  dplyr::select(SA3_CODE16, SA3_NAME16, STE_SHORT, max_gno) %>% 
+  dplyr::rename(airbnb_gno = max_gno)
+
+summary(airbnb_sa3_18$airbnb_gno)
+```
+
+## HomeAway
+
+Using (maximum) number of guest nights occupied (GNO).
+
+```{r}
+ha_sa3_18 <- 
+  readRDS(file = "Z:/AIRBNB-Q0931/TEMPO_Airbnb/data/ha/clean/ha_sa3_18.rds") %>% 
+  dplyr::filter(reporting_month == ymd("2018-09-01")) %>% 
+  dplyr::select(SA3_CODE16, max_gno) %>% 
+  dplyr::rename(ha_gno = max_gno)
+
+summary(ha_sa3_18$ha_gno)
+```
+
+## Relationship
+
+```{r}
+airbnb_ha_sa3_18 <- 
+  airbnb_sa3_18 %>% 
+  left_join(ha_sa3_18) %>% 
+  replace_na(list(ha_gno = 0)) # %>% mutate(diff = airbnb_gno - airbnb_gno)
+
+rm(airbnb_sa3_18, ha_sa3_18)
+saveRDS(airbnb_ha_sa3_18, file = "data/airbnb_ha_sa3_18.Rds")
+
+max <- max(max(airbnb_ha_sa3_18$airbnb_gno), max(airbnb_ha_sa3_18$airbnb_gno))/1000
+
+airbnb_ha_sa3_18 %>% 
+  ggplot() +
+  geom_line(aes(x = airbnb_gno/1000, y = airbnb_gno/1000), colour = "darkorchid4", size = 1) +
+  geom_point(aes(x = ha_gno/1000, y = airbnb_gno/1000), alpha = 0.5) +
+  theme_light() +
+  coord_fixed(xlim = c(0, max), ylim = c(0, max)) +
+  labs(x = "GNO Homeaway", y = "GNO Airbnb")
+
+# handful of regions where HA higher
+# filter(airbnb_ha_sa3_18, ha_gno > airbnb_gno)
+```
+
+# Model on real data
+
+```{r}
+X <- as.matrix(dplyr::select(airbnb_ha_sa3_18, airbnb_gno, ha_gno))
+alpha <- rowSums(X) + 1
+
+## Posterior Proportions expectations
+p.post <- alpha/sum(alpha)
+
+## Now generate samples from the posterior predicitive
+post.p.sample <- rdirichlet(1000, alpha)
+
+p.post[1]
+mean(post.p.sample[, 1])
+
+# Using Dec '18 ERP pops
+# post.pred <- 25180200*post.p.sample
+
+# Using sum of all visitors
+post.pred <- sum(rowSums(X))*post.p.sample
+
+mean(post.pred[, 1])
+sum(X[1, ])
+mean(X[1, ])
+
+```
+
+```{r}
+airbnb_ha_sa3_18 %<>% 
+  mutate(mean = rowMeans(dplyr::select(., ends_with("_gno")), na.rm = TRUE),
+         sum = rowSums(dplyr::select(., ends_with("_gno")), na.rm = TRUE))
+
+airbnb_ha_sa3_18$est <- round(apply(post.pred, 2, mean))
+airbnb_ha_sa3_18$dif <- airbnb_ha_sa3_18$est - airbnb_ha_sa3_18$sum
+airbnb_ha_sa3_18$dif_rel <- (airbnb_ha_sa3_18$dif / airbnb_ha_sa3_18$sum) * 100
+
+hist(airbnb_ha_sa3_18$dif)
+hist(airbnb_ha_sa3_18$dif_rel)
+
+sum(airbnb_ha_sa3_18$airbnb_gno) + sum(airbnb_ha_sa3_18$ha_gno)
+sum(airbnb_ha_sa3_18$est)
+```
+
