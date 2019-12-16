@@ -440,6 +440,10 @@ SA3 %>%
   tm_polygons(col = "RA_NAME_2016", alpha = .5, border.col = NA, id = "SA3_NAME16")
 ```
 
+```{r include=FALSE}
+write_csv(remote_ra_one, "data/model_input/remote_sa3_18.csv")
+```
+
 
 <!-- ------------------------------------------------------------ --> 
 
