@@ -79,7 +79,9 @@ data <- data %>%
   left_join(climate)
 
 remote <- read_csv("data/model_input/remote_sa3_18.csv") %>% 
-  select(SA3_CODE16, RA_NAME_2016)
+  select(SA3_CODE16, RA_NAME_2016) %>% 
+  mutate(RA_NAME_2016 = ifelse(RA_NAME_2016 == "Very Remote Australia", 
+                               "Remote Australia", RA_NAME_2016))
 
 data <- data %>% 
   left_join(remote)
@@ -337,12 +339,6 @@ data %>%
 ```
 
 
-
-
-
-
-
-
 ## Cyclical time by climate region + cyclical time by RA, random effects on SA3
 
 ```{r}
@@ -466,4 +462,130 @@ data %>%
   scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
   xlab("") + ylab("Observed/fitted") + 
   facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+## Cyclical time by climate region + RA interaction, random effects on SA3
+
+```{r}
+# https://stackoverflow.com/questions/47934100/how-to-specify-the-non-linear-interaction-of-two-factor-variables-in-generalised
+
+m4 <- gam(Airbnb_visitor_nights ~ 1 + 
+            cz_desc + RA_NAME_2016 +
+            s(time, by = interaction(cz_desc, RA_NAME_2016), bs = "cc") +
+            s(SA3_CODE16, bs="re", k = length(unique(data$SA3_NAME16))),
+          offset = log(NVS_dest_nights_year),
+          data = data, 
+          # niterPQL=500,
+          # family = negbin(1))
+          family = poisson)
+
+summary(m4) 
+
+# gam.check(m4)
+# plot.gam(m4, shade = TRUE, pages=1)
+
+draw(m4)
+appraise(m4)
+
+# acf(residuals(m4), main = "Raw residual ACF")
+# acf(residuals(m4, type = "normalized"), main = "Standardized residual ACF")
+
+data$m4 <- fitted(m4)
+# data$m4 <- predict.gam(m4, type = "response")
+
+head(predict.gam(m4, type="link"))
+
+str(predict.gam(m4, type="terms"))
+dim(predict.gam(m4, type="terms"))
+head(predict.gam(m4, type="terms"), n =24)
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m4),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m4),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~date) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m4),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~cz_desc) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+ggplot(data, aes(x = Airbnb_visitor_nights)) +
+  geom_point(aes(y = m4),
+             alpha = 0.3) +
+  geom_line(aes(y = Airbnb_visitor_nights), col = "darkorchid4") +
+  facet_wrap(~RA_NAME_2016) +
+  theme_minimal() + xlab("Airbnb_visitor_nights") + ylab("Predicted")
+
+```
+
+```{r}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m4, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  ggplot(aes(x = time, y = m4, group = SA3_NAME16)) +
+  geom_line(aes(group = SA3_NAME16), alpha = 0.3) +
+  geom_smooth(aes(group = cz_desc)) + 
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~cz_desc, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  ggplot(aes(x = time, y = m4, group = SA3_NAME16)) +
+  geom_line(aes(group = SA3_NAME16), alpha = 0.3) +
+  geom_smooth(aes(group = RA_NAME_2016)) + 
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~RA_NAME_2016, scales = "free_y")
+```
+
+```{r}
+data %>% 
+  ggplot(aes(x = time, y = m4, group = SA3_NAME16)) +
+  geom_line(aes(group = SA3_NAME16), alpha = 0.3) +
+  geom_smooth(aes(group = RA_NAME_2016)) + 
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_grid(cz_desc~RA_NAME_2016, scales = "free_y")
+```
+
+```{r eval=FALSE, include=FALSE}
+data %>% 
+  right_join(regions) %>% 
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = m4, group = SA3_NAME16, col = region_types)) +
+  geom_point(aes(y = Airbnb_visitor_nights), 
+             col = "#00AFBB", alpha = 0.3) +
+  geom_point(aes(y = NVS_dest_nights),
+             col = "#E7B800", alpha = 0.33) +
+  theme_minimal() + 
+  scale_x_continuous(limits = c(0, 12), breaks = c(2:10)) +
+  xlab("") + ylab("Observed/fitted") + 
+  facet_wrap(~SA3_NAME16, scales = "free_y")
+
 ```
