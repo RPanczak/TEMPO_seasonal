@@ -176,8 +176,12 @@ data %>%
 ## Cyclical time by climate region
 
 ```{r}
+# https://www.fromthebottomoftheheap.net/2017/12/14/difference-splines-ii/
+# time needed if interaction included?
+
 m1 <- gam(Airbnb_visitor_nights ~ 1 + 
             cz_desc +
+            s(time, bs = "cc") +
             s(time, by = cz_desc, bs = "cc"),
           offset = log(NVS_dest_nights_year),
           data = data, 
@@ -188,7 +192,7 @@ m1 <- gam(Airbnb_visitor_nights ~ 1 +
 summary(m1) 
 
 # gam.check(m1)
-# plot.gam(m1, shade = TRUE)
+# plot.gam(m1, shade = TRUE, pages = 1, scale = 0, seWithMean = TRUE)
 
 draw(m1)
 appraise(m1)
@@ -260,6 +264,7 @@ data %>%
 ```{r}
 m2 <- gam(Airbnb_visitor_nights ~ 1 + 
             cz_desc +
+            s(time, bs = "cc") +
             s(time, by = cz_desc, bs = "cc") +
             s(SA3_CODE16, bs="re", k = length(unique(data$SA3_NAME16))),
           offset = log(NVS_dest_nights_year),
@@ -271,7 +276,7 @@ m2 <- gam(Airbnb_visitor_nights ~ 1 +
 summary(m2) 
 
 # gam.check(m2)
-# plot.gam(m2, shade = TRUE)
+# plot.gam(m2, shade = TRUE, pages = 1, scale = 0, seWithMean = TRUE)
 
 draw(m2)
 appraise(m2)
@@ -343,6 +348,7 @@ data %>%
 
 ```{r}
 m3 <- gam(Airbnb_visitor_nights ~ 1 + 
+            s(time, bs = "cc") +
             cz_desc +
             s(time, by = cz_desc, bs = "cc") +
             RA_NAME_2016 +
@@ -357,9 +363,9 @@ m3 <- gam(Airbnb_visitor_nights ~ 1 +
 summary(m3) 
 
 # gam.check(m3)
-# plot.gam(m3, shade = TRUE)
+# plot.gam(m3, shade = TRUE, pages = 1, scale = 0, seWithMean = TRUE)
 
-draw(m3)
+# draw(m3)
 appraise(m3)
 
 # acf(residuals(m3), main = "Raw residual ACF")
@@ -471,6 +477,7 @@ data %>%
 
 m4 <- gam(Airbnb_visitor_nights ~ 1 + 
             cz_desc + RA_NAME_2016 +
+            s(time, bs = "cc") +
             s(time, by = interaction(cz_desc, RA_NAME_2016), bs = "cc") +
             s(SA3_CODE16, bs="re", k = length(unique(data$SA3_NAME16))),
           offset = log(NVS_dest_nights_year),
@@ -482,9 +489,9 @@ m4 <- gam(Airbnb_visitor_nights ~ 1 +
 summary(m4) 
 
 # gam.check(m4)
-# plot.gam(m4, shade = TRUE, pages=1)
+# plot.gam(m4, shade = TRUE, pages = 1, scale = 0, seWithMean = TRUE)
 
-draw(m4)
+# draw(m4)
 appraise(m4)
 
 # acf(residuals(m4), main = "Raw residual ACF")
