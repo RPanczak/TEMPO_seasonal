@@ -3,14 +3,9 @@
 .RData
 .Ruserdata
 /data
-/docs
 *.html
 geocode.txt
 mapbox.txt
 opencage.txt
 hpc.txt
-SyncToy*
 .httr-oauth
-data_processing_alex.R
-stan
-tempo_*.R
