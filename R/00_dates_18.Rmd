@@ -25,6 +25,8 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 options(scipen=999)
 set.seed(12345)
 
+# remotes::install_github("deanmarchiori/ozdates")
+
 library(pacman) 
 p_load(tidyverse, readr, readxl, janitor, kableExtra, lubridate, ozdates)#, geofacet)
 
@@ -44,7 +46,6 @@ holidays_18 <- aus_public_holidays %>%
 
 p_unload(ozdates)
 ```
-
 
 ```{r, fig.width=6, fig.height=8, out.width="600px", out.height="800px"}
 holidays_18 %>% 
